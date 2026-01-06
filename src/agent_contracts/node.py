@@ -51,25 +51,31 @@ class ModularNode(ABC):
         """
         self.logger = get_logger(self.__class__.__name__)
         self.llm = llm
+        self._validated = False  # Deferred validation flag
         
         # Service injection
         self._services = services
         for service_name in self.CONTRACT.services:
             if service_name in services:
                 setattr(self, service_name, services[service_name])
-        
-        # Dependency validation
-        self._validate_dependencies()
     
     def _validate_dependencies(self) -> None:
-        """Validate declared dependencies from Contract."""
+        """Validate declared dependencies from Contract.
+        
+        Called lazily on first execution to allow subclasses to set
+        services after calling super().__init__().
+        """
+        if self._validated:
+            return
+        self._validated = True
+        
         if self.CONTRACT.requires_llm and self.llm is None:
             self.logger.warning(
                 f"Node {self.CONTRACT.name} requires LLM but none provided"
             )
         
         for service_name in self.CONTRACT.services:
-            if not hasattr(self, service_name):
+            if not hasattr(self, service_name) or getattr(self, service_name) is None:
                 self.logger.warning(
                     f"Node {self.CONTRACT.name} requires {service_name} but not provided"
                 )
@@ -96,6 +102,9 @@ class ModularNode(ABC):
         Extracts required slices from State, calls execute,
         and converts result to State update format.
         """
+        # Deferred dependency validation (runs once on first call)
+        self._validate_dependencies()
+        
         # Extract input slices
         inputs = self._extract_inputs(state)
         
