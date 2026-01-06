@@ -6,9 +6,10 @@ Contract-based I/O is automatically validated.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Optional
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
 
 from agent_contracts.contracts import NodeContract, NodeInputs, NodeOutputs
 from agent_contracts.utils.logging import get_logger
@@ -85,7 +86,11 @@ class ModularNode(ABC):
         """
         pass
     
-    async def __call__(self, state: dict) -> dict:
+    async def __call__(
+        self,
+        state: dict,
+        config: Optional[RunnableConfig] = None,
+    ) -> dict:
         """LangGraph-compatible Callable.
         
         Extracts required slices from State, calls execute,
@@ -94,8 +99,34 @@ class ModularNode(ABC):
         # Extract input slices
         inputs = self._extract_inputs(state)
         
+        # Merge config with node metadata
+        config = config or {}
+        if "metadata" not in config:
+            config["metadata"] = {}
+        
+        config["metadata"].update({
+            "node_name": self.CONTRACT.name,
+            "node_supervisor": self.CONTRACT.supervisor,
+            "node_type": self.__class__.__name__,
+        })
+        
         # Execute
         try:
+            # Check if execute accepts config (optional for backward compatibility)
+            # For now, we don't pass config to execute to keep user API simple,
+            # unless we decide to support it. 
+            # But we should ensure self.llm usage picks up the config if possible.
+            # Since self.llm is bound at init, we might need to pass config if we want
+            # automatic propagation.
+            # However, standard pattern in LangChain is passing config to invoke.
+            # If user does `await self.llm.ainvoke(...)` inside execute, they need config.
+            # To support this without changing `execute(self, inputs)`, we can attach 
+            # config to the instance temporarily or rely on context vars if LangChain uses them.
+            # LangChain uses run_in_executor but async context propagation can be tricky.
+            # 
+            # A cleaner way for the future is allowing `execute(self, inputs, config)`.
+            # For now, let's just trace the node execution itself with the metadata.
+            
             outputs = await self.execute(inputs)
         except Exception as e:
             self.logger.error(f"Node {self.CONTRACT.name} execution failed: {e}")

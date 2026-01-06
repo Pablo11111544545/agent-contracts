@@ -5,7 +5,8 @@ automatically builds LangGraph StateGraph.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
+from langchain_core.runnables import RunnableConfig
 
 from langgraph.graph import StateGraph, END
 
@@ -104,7 +105,7 @@ class GraphBuilder:
         node_cls = self.node_classes.get(node_name)
         instance = self.node_instances.get(node_name)
         
-        async def wrapper(state: dict) -> dict:
+        async def wrapper(state: dict, config: Optional[RunnableConfig] = None) -> dict:
             if node_cls is None:
                 self.logger.error(f"Node class not found: {node_name}")
                 return {}
@@ -114,12 +115,12 @@ class GraphBuilder:
                 services = self.dependency_provider(contract) if self.dependency_provider else {}
                 llm = self.llm_provider() if (self.llm_provider and contract.requires_llm) else None
                 node = node_cls(llm=llm, **services)
-                updates = await node(state)
+                updates = await node(state, config=config)
             else:
                 if instance is None:
                     self.logger.error(f"Node instance not found: {node_name}")
                     return {}
-                updates = await instance(state)
+                updates = await instance(state, config=config)
             return merge_slice_updates(state, updates)
         
         wrapper.__name__ = f"{node_name}_node"
@@ -129,7 +130,7 @@ class GraphBuilder:
         """Create LangGraph-compatible Supervisor wrapper."""
         supervisor = self.supervisor_instances.get(supervisor_name)
 
-        async def wrapper(state: dict) -> dict:
+        async def wrapper(state: dict, config: Optional[RunnableConfig] = None) -> dict:
             if self.llm_provider:
                 llm = self.llm_provider()
                 current = GenericSupervisor(
@@ -137,12 +138,12 @@ class GraphBuilder:
                     llm=llm,
                     registry=self.registry,
                 )
-                updates = await current.run(state)
+                updates = await current.run(state, config=config)
             else:
                 if supervisor is None:
                     self.logger.error(f"Supervisor not found: {supervisor_name}")
                     return {}
-                updates = await supervisor.run(state)
+                updates = await supervisor.run(state, config=config)
             return merge_slice_updates(state, updates)
         
         wrapper.__name__ = f"{supervisor_name}_supervisor"

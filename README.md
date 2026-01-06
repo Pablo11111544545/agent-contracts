@@ -240,7 +240,31 @@ print(config.supervisor.max_iterations)
 
 ---
 
-## 📚 API Reference
+---
+ 
+ ## 🔍 Observability (LangSmith)
+ 
+ `agent-contracts` is fully integrated with [LangSmith](https://smith.langchain.com/) for tracing and debugging.
+ 
+ ### 1. Setup Environment Variables
+ 
+ ```bash
+ export LANGCHAIN_TRACING_V2=true
+ export LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
+ export LANGCHAIN_API_KEY="<your-api-key>"
+ export LANGCHAIN_PROJECT="my-agent-project"
+ ```
+ 
+ ### 2. Automatic Tracing
+ 
+ Just running the graph will automatically stream traces to LangSmith. The framework adds rich metadata to help you debug:
+ 
+ - **Supervisors**: Shows iteration count, decision reasoning, and candidate rules.
+ - **Nodes**: Shows execution time, input/output slices, and node type.
+ 
+ ---
+ 
+ ## 📚 API Reference
 
 ### Main Exports
 

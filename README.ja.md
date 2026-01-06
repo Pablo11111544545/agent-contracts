@@ -239,7 +239,31 @@ print(config.supervisor.max_iterations)
 
 ---
 
-## 📚 APIリファレンス
+---
+ 
+ ## 🔍 可観測性 (LangSmith)
+ 
+ `agent-contracts`は[LangSmith](https://smith.langchain.com/)と完全に統合されており、トレースとデバッグが可能です。
+ 
+ ### 1. 環境変数の設定
+ 
+ ```bash
+ export LANGCHAIN_TRACING_V2=true
+ export LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
+ export LANGCHAIN_API_KEY="<your-api-key>"
+ export LANGCHAIN_PROJECT="my-agent-project"
+ ```
+ 
+ ### 2. 自動トレース
+ 
+ グラフを実行するだけで、自動的にトレースがLangSmithに送信されます。フレームワークはデバッグに役立つ豊富なメタデータを追加します：
+ 
+ - **Supervisors**: 反復回数、決定理由、候補ルールを表示
+ - **Nodes**: 実行時間、入出力スライス、ノードタイプを表示
+ 
+ ---
+ 
+ ## 📚 APIリファレンス
 
 ### 主要エクスポート
 

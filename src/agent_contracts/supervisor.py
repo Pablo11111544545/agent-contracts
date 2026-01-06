@@ -5,11 +5,12 @@ Registry trigger conditions and LLM.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, Field
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
 
 from agent_contracts.registry import NodeRegistry, get_node_registry
 from agent_contracts.config import get_config
@@ -64,7 +65,11 @@ class GenericSupervisor:
             config.supervisor.terminal_response_types
         )
     
-    async def run(self, state: dict) -> dict:
+    async def run(
+        self,
+        state: dict,
+        config: Optional[RunnableConfig] = None,
+    ) -> dict:
         """Execute Supervisor node.
         
         Called as LangGraph node.
@@ -86,7 +91,7 @@ class GenericSupervisor:
             }
         
         # Decide
-        decision = await self.decide(state)
+        decision = await self.decide(state, config)
         
         self.logger.info(
             f"{self.name} supervisor decision: {decision.next_node} ({decision.reasoning})"
@@ -100,7 +105,11 @@ class GenericSupervisor:
             }
         }
     
-    async def decide(self, state: dict) -> SupervisorDecision:
+    async def decide(
+        self,
+        state: dict,
+        config: Optional[RunnableConfig] = None,
+    ) -> SupervisorDecision:
         """Determine next node.
         
         1. Immediate exit check (response_type check)
@@ -108,6 +117,16 @@ class GenericSupervisor:
         3. LLM decision (final decision)
            If no LLM, use top rule-based candidate
         """
+        # Enhance trace config
+        config = config or {}
+        if "metadata" not in config:
+            config["metadata"] = {}
+            
+        config["metadata"].update({
+            "supervisor_name": self.name,
+            "supervisor_iteration": state.get("_internal", {}).get(f"{self.name}_iteration", 0),
+        })
+        
         # Phase 0: Immediate exit check
         immediate = self._check_immediate_rules(state)
         if immediate:
@@ -144,9 +163,19 @@ class GenericSupervisor:
         if previous_decision and previous_decision != "done":
             child_decision = previous_decision
         
+        # Add evaluation context to trace
+        if "tags" not in config:
+            config["tags"] = []
+        config["tags"].append("supervisor_decision")
+        
         # Phase 2: LLM decision
         if self.llm:
-            decision = await self._decide_with_llm(state, rule_candidates, child_decision)
+            decision = await self._decide_with_llm(
+                state,
+                rule_candidates,
+                child_decision,
+                config=config,
+            )
             if decision:
                 return decision
         
@@ -182,7 +211,8 @@ class GenericSupervisor:
         self, 
         state: dict,
         rule_candidates: list[str],
-        child_decision: str | None
+        child_decision: str | None,
+        config: Optional[RunnableConfig] = None,
     ) -> SupervisorDecision | None:
         """Decide using LLM."""
         try:
@@ -205,7 +235,8 @@ Last active node suggested: {child_decision or 'None'}
             result = await structured_llm.ainvoke(
                 f"System: You are a decision-making supervisor for a {self.name} flow. "
                 f"If 'High priority system rules' are provided, you MUST select one of them. "
-                f"Otherwise, prioritize user intent.\n\n{full_prompt}"
+                f"Otherwise, prioritize user intent.\n\n{full_prompt}",
+                config=config,
             )
             
             return result
@@ -214,6 +245,10 @@ Last active node suggested: {child_decision or 'None'}
             self.logger.error(f"LLM decision failed: {e}")
             return None
     
-    async def __call__(self, state: dict) -> dict:
+    async def __call__(
+        self,
+        state: dict,
+        config: Optional[RunnableConfig] = None,
+    ) -> dict:
         """LangGraph-compatible Callable."""
-        return await self.run(state)
+        return await self.run(state, config)
