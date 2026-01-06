@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field, ConfigDict
 class TriggerCondition(BaseModel):
     """Condition for when a node should be triggered.
     
-    The Supervisor evaluates these conditions and selects nodes.
-    Rule-based evaluation takes priority; if no match, LLM decides.
+    The Supervisor collects matching conditions as hints for LLM decision.
+    If no LLM is available, rule-based matching is used as fallback.
     """
     model_config = ConfigDict(frozen=True)
     

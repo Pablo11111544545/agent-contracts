@@ -155,9 +155,10 @@ class InteractiveNode(ModularNode):
     """Base class for conversational nodes.
     
     Provides standard flow for:
-    1. check_completion: Completion check
+    1. prepare_context: Prepare execution context
     2. process_answer: Answer processing (if previous question exists)
-    3. generate_question: Next question generation (if not complete)
+    3. check_completion: Completion check
+    4. generate_question: Next question generation (if not complete)
     
     Subclasses should implement:
     - prepare_context(inputs) -> Any

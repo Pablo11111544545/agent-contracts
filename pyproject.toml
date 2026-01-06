@@ -37,8 +37,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/agent-contracts"
-Repository = "https://github.com/your-org/agent-contracts"
+Homepage = "https://github.com/yatarousan0227/agent-contracts"
+Repository = "https://github.com/yatarousan0227/agent-contracts"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_contracts"]

@@ -9,13 +9,15 @@ English | [日本語](README.ja.md)
 
 `agent-contracts` provides a structured way to build AI agents using declarative contracts that define node I/O, dependencies, and routing rules. This enables automatic graph construction, type-safe state management, and flexible LLM-powered routing.
 
+![Architecture Overview](images/overview.png)
+
 ---
 
 ## ✨ Features
 
 - **📝 Contract-Driven Design**: Nodes declare their I/O, dependencies, and trigger conditions through `NodeContract`
 - **🔧 Registry-Based Architecture**: Auto-build LangGraph from registered nodes without manual wiring
-- **🧠 Smart Supervisor**: Rule-based + LLM fallback routing with configurable strategies
+- **🧠 LLM-Driven Supervisor**: LLM makes routing decisions with rule-based hints and fallbacks
 - **💬 Interactive Nodes**: Built-in base class for conversational agents with interview patterns
 - **📊 Typed State Management**: Pydantic-based state slices with validation
 - **⚙️ YAML Configuration**: Externalize settings with Pydantic validation
@@ -28,7 +30,7 @@ English | [日本語](README.ja.md)
 pip install agent-contracts
 
 # or from git
-pip install git+https://github.com/your-org/agent-contracts.git
+pip install git+https://github.com/yatarousan0227/agent-contracts.git
 ```
 
 ### Requirements
@@ -83,7 +85,7 @@ class GreetingNode(ModularNode):
 ### 2. Register and Build Graph
 
 ```python
-from agent_contracts import get_node_registry, GraphBuilder
+from agent_contracts import get_node_registry, build_graph_from_registry
 from langchain_openai import ChatOpenAI
 
 # Get the global registry
@@ -94,11 +96,15 @@ registry.register(GreetingNode)
 
 # Build the LangGraph
 llm = ChatOpenAI(model="gpt-4")
-builder = GraphBuilder(registry, default_llm=llm)
-graph = builder.build_graph()
+graph = build_graph_from_registry(
+    registry=registry,
+    llm=llm,
+    supervisors=["main"],
+)
+compiled = graph.compile()
 
 # Run the graph
-result = await graph.ainvoke({
+result = await compiled.ainvoke({
     "request": {
         "action": "greet",
         "params": {"name": "Alice"}
@@ -153,8 +159,10 @@ TriggerCondition(
 The supervisor orchestrates node selection:
 
 1. **Immediate Rules**: Check for terminal states
-2. **Rule-Based Evaluation**: Match trigger conditions
-3. **LLM Decision**: Use LLM for complex routing decisions
+2. **Explicit Routing**: Return answers to question-owning nodes
+3. **Rule-Based Hints**: Collect candidates from trigger conditions
+4. **LLM Decision**: LLM makes final decision using rule hints
+5. **Fallback**: Use top rule candidate if LLM unavailable
 
 ```python
 from agent_contracts import GenericSupervisor
@@ -243,7 +251,7 @@ print(config.supervisor.max_iterations)
 | `TriggerCondition` | Trigger condition for routing |
 | `NodeInputs` / `NodeOutputs` | Typed I/O containers |
 | `NodeRegistry` | Node registration and discovery |
-| `GenericSupervisor` | Smart routing supervisor |
+| `GenericSupervisor` | LLM-driven routing supervisor |
 | `GraphBuilder` | Automatic LangGraph construction |
 | `BaseAgentState` | Base state class with slices |
 
@@ -275,6 +283,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/your-org/agent-contracts)
+- [GitHub Repository](https://github.com/yatarousan0227/agent-contracts)
 - [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
 - [LangChain Documentation](https://python.langchain.com/)

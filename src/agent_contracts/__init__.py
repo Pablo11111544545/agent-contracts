@@ -5,7 +5,7 @@ This package provides:
 - ModularNode: Base class for LangGraph nodes
 - InteractiveNode: Base class for conversational nodes
 - NodeRegistry: Registration and routing
-- GenericSupervisor: Rule-based + LLM routing
+- GenericSupervisor: LLM-driven routing with rule hints
 - GraphBuilder: Automatic LangGraph construction
 """
 

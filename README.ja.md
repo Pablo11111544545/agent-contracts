@@ -9,13 +9,15 @@
 
 `agent-contracts`は、宣言的なコントラクトを使用してAIエージェントを構築するための構造化されたフレームワークです。ノードのI/O、依存関係、ルーティングルールを定義し、自動グラフ構築、型安全な状態管理、柔軟なLLMベースのルーティングを実現します。
 
+![アーキテクチャ概要](images/overview.png)
+
 ---
 
 ## ✨ 特徴
 
 - **📝 コントラクト駆動設計**: `NodeContract`を通じてノードのI/O、依存関係、トリガー条件を宣言
 - **🔧 レジストリベースアーキテクチャ**: 手動配線なしで登録されたノードからLangGraphを自動構築
-- **🧠 スマートスーパーバイザー**: ルールベース + LLMフォールバックによる柔軟なルーティング
+- **🧠 LLM駆動スーパーバイザー**: ルールヒントを参考にLLMがルーティングを決定
 - **💬 インタラクティブノード**: インタビューパターンを持つ会話型エージェント用の基底クラス
 - **📊 型付き状態管理**: Pydanticベースの状態スライスとバリデーション
 - **⚙️ YAML設定**: Pydanticバリデーション付きの外部設定
@@ -28,7 +30,7 @@
 pip install agent-contracts
 
 # または git から
-pip install git+https://github.com/your-org/agent-contracts.git
+pip install git+https://github.com/yatarousan0227/agent-contracts.git
 ```
 
 ### 必要要件
@@ -83,7 +85,7 @@ class GreetingNode(ModularNode):
 ### 2. 登録とグラフ構築
 
 ```python
-from agent_contracts import get_node_registry, GraphBuilder
+from agent_contracts import get_node_registry, build_graph_from_registry
 from langchain_openai import ChatOpenAI
 
 # グローバルレジストリを取得
@@ -94,11 +96,15 @@ registry.register(GreetingNode)
 
 # LangGraphを構築
 llm = ChatOpenAI(model="gpt-4")
-builder = GraphBuilder(registry, default_llm=llm)
-graph = builder.build_graph()
+graph = build_graph_from_registry(
+    registry=registry,
+    llm=llm,
+    supervisors=["main"],
+)
+compiled = graph.compile()
 
 # グラフを実行
-result = await graph.ainvoke({
+result = await compiled.ainvoke({
     "request": {
         "action": "greet",
         "params": {"name": "太郎"}
@@ -153,8 +159,10 @@ TriggerCondition(
 スーパーバイザーはノード選択を統括します：
 
 1. **即時ルール**: 終端状態のチェック
-2. **ルールベース評価**: トリガー条件のマッチング
-3. **LLM判断**: 複雑なルーティングにはLLMを使用
+2. **明示的ルーティング**: 回答を質問元ノードに返す
+3. **ルールヒント収集**: トリガー条件から候補を収集
+4. **LLM判断**: ルールヒントを参考にLLMが最終決定
+5. **フォールバック**: LLM不在時はルール候補を使用
 
 ```python
 from agent_contracts import GenericSupervisor
@@ -243,7 +251,7 @@ print(config.supervisor.max_iterations)
 | `TriggerCondition` | ルーティング用トリガー条件 |
 | `NodeInputs` / `NodeOutputs` | 型付きI/Oコンテナ |
 | `NodeRegistry` | ノードの登録と探索 |
-| `GenericSupervisor` | スマートルーティングスーパーバイザー |
+| `GenericSupervisor` | LLM駆動ルーティングスーパーバイザー |
 | `GraphBuilder` | LangGraph自動構築 |
 | `BaseAgentState` | スライス付き基底状態クラス |
 
@@ -275,6 +283,6 @@ from agent_contracts import (
 
 ## 🔗 リンク
 
-- [GitHubリポジトリ](https://github.com/your-org/agent-contracts)
+- [GitHubリポジトリ](https://github.com/yatarousan0227/agent-contracts)
 - [LangGraphドキュメント](https://langchain-ai.github.io/langgraph/)
 - [LangChainドキュメント](https://python.langchain.com/)
