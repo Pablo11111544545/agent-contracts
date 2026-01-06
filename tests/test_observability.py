@@ -14,7 +14,7 @@ class MockNode(ModularNode):
         supervisor="main",
     )
     
-    async def execute(self, inputs: NodeInputs) -> NodeOutputs:
+    async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
         return NodeOutputs(response={"data": "test"})
 
 @pytest.mark.asyncio

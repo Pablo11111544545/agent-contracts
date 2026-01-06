@@ -114,10 +114,15 @@ class NodeRegistry:
         for name in self.get_supervisor_nodes(supervisor):
             contract = self._contracts[name]
             
+            # Find highest priority matching condition for this node
+            highest_priority: int | None = None
             for condition in contract.trigger_conditions:
                 if self._evaluate_condition(condition, state):
-                    candidates.append((condition.priority, name))
-                    break  # Stop at first match
+                    if highest_priority is None or condition.priority > highest_priority:
+                        highest_priority = condition.priority
+            
+            if highest_priority is not None:
+                candidates.append((highest_priority, name))
         
         # Sort by priority (descending)
         candidates.sort(key=lambda x: x[0], reverse=True)

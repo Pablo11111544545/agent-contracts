@@ -31,14 +31,25 @@ def mock_registry():
     )
     
     registry.get_all_contracts.return_value = [contract1, contract2]
+    registry.get_supervisor_nodes.return_value = ["node1", "node2"]
     return registry
 
 @pytest.mark.asyncio
 class TestGenericSupervisor:
-    async def test_immediate_rule_match(self, mock_registry, mock_llm):
-        """Test that a high-priority rule match bypasses the LLM."""
-        # Mock evaluate_triggers to return a match
+    async def test_rule_candidate_with_llm(self, mock_registry, mock_llm):
+        """Test that rule candidates are passed to LLM for final decision."""
+        # Mock evaluate_triggers to return a rule candidate
         mock_registry.evaluate_triggers.return_value = ["node1"]
+        mock_registry.build_llm_prompt.return_value = "Choose next action"
+        
+        # Setup LLM to return the rule candidate
+        from agent_contracts.supervisor import SupervisorDecision
+        mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
+            return_value=SupervisorDecision(
+                next_node="node1",
+                reasoning="Rule match for run_node1"
+            )
+        )
         
         supervisor = GenericSupervisor(
             supervisor_name="main",
@@ -48,18 +59,14 @@ class TestGenericSupervisor:
         
         inputs = {
             "request": {"action": "run_node1"},
-            "scratchpad": {"iteration": 0}
+            "_internal": {"main_iteration": 0}
         }
         
-        # Should pick node1 based on 'when' condition
         result = await supervisor.decide(inputs)
         assert result.next_node == "node1"
-        
-        # LLM should not have been called
-        mock_llm.ainvoke.assert_not_called()
 
     async def test_max_iterations_reached(self, mock_registry, mock_llm):
-        """Test that recursion limit returns END."""
+        """Test that max iterations returns done."""
         mock_registry.evaluate_triggers.return_value = []
         
         supervisor = GenericSupervisor(
@@ -71,16 +78,17 @@ class TestGenericSupervisor:
         
         inputs = {
             "request": {},
-            "scratchpad": {"iteration": 5} # Limit reached
+            "_internal": {"main_iteration": 5}  # Limit reached
         }
         
         result = await supervisor.run(inputs)
         assert result["_internal"]["decision"] == "done"
 
     async def test_llm_decision(self, mock_registry, mock_llm):
-        """Test falling back to LLM decision."""
+        """Test falling back to LLM decision when no rules match."""
         # Mock evaluate_triggers to return empty so it falls back to LLM
         mock_registry.evaluate_triggers.return_value = []
+        mock_registry.build_llm_prompt.return_value = "Choose next action"
         
         # Setup LLM to return a routing decision
         from agent_contracts.supervisor import SupervisorDecision
@@ -99,8 +107,9 @@ class TestGenericSupervisor:
         
         inputs = {
             "request": {"action": "search"},
-            "scratchpad": {"iteration": 0}
+            "_internal": {"main_iteration": 0}
         }
         
         result = await supervisor.decide(inputs)
         assert result.next_node == "node2"
+

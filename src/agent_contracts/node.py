@@ -81,11 +81,17 @@ class ModularNode(ABC):
                 )
     
     @abstractmethod
-    async def execute(self, inputs: NodeInputs) -> NodeOutputs:
+    async def execute(
+        self, 
+        inputs: NodeInputs, 
+        config: Optional[RunnableConfig] = None,
+    ) -> NodeOutputs:
         """Execute node's main processing.
         
         Args:
             inputs: Input slices per CONTRACT.reads
+            config: Optional RunnableConfig for LLM tracing. Pass this to
+                    self.llm.ainvoke(..., config=config) for proper tracing.
             
         Returns:
             Output slices per CONTRACT.writes
@@ -121,22 +127,9 @@ class ModularNode(ABC):
         
         # Execute
         try:
-            # Check if execute accepts config (optional for backward compatibility)
-            # For now, we don't pass config to execute to keep user API simple,
-            # unless we decide to support it. 
-            # But we should ensure self.llm usage picks up the config if possible.
-            # Since self.llm is bound at init, we might need to pass config if we want
-            # automatic propagation.
-            # However, standard pattern in LangChain is passing config to invoke.
-            # If user does `await self.llm.ainvoke(...)` inside execute, they need config.
-            # To support this without changing `execute(self, inputs)`, we can attach 
-            # config to the instance temporarily or rely on context vars if LangChain uses them.
-            # LangChain uses run_in_executor but async context propagation can be tricky.
-            # 
-            # A cleaner way for the future is allowing `execute(self, inputs, config)`.
-            # For now, let's just trace the node execution itself with the metadata.
-            
-            outputs = await self.execute(inputs)
+            # Store config as instance attribute for convenience
+            self._config = config
+            outputs = await self.execute(inputs, config=config)
         except Exception as e:
             self.logger.error(f"Node {self.CONTRACT.name} execution failed: {e}")
             raise
@@ -239,8 +232,15 @@ class InteractiveNode(ModularNode):
         """Create output for completion (default: done flag)."""
         return NodeOutputs(_internal={"decision": "done"})
     
-    async def execute(self, inputs: NodeInputs) -> NodeOutputs:
+    async def execute(
+        self, 
+        inputs: NodeInputs, 
+        config: Optional[RunnableConfig] = None,
+    ) -> NodeOutputs:
         """Standard execution flow."""
+        # Store config for use in sub-methods
+        self._config = config
+        
         # 0. Prepare context
         context = self.prepare_context(inputs)
         

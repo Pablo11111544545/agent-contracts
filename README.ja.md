@@ -2,6 +2,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml)
 
 **LangGraphエージェント構築のための、モジュラーでコントラクト駆動のノードアーキテクチャ**
 
@@ -65,13 +66,14 @@ class GreetingNode(ModularNode):
         ],
     )
 
-    async def execute(self, inputs: NodeInputs) -> NodeOutputs:
+    async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
         request = inputs.get_slice("request")
         user_name = request.get("params", {}).get("name", "ユーザー")
         
         # LLMで挨拶を生成
         response = await self.llm.ainvoke(
-            f"{user_name}さんへのフレンドリーな挨拶を生成してください"
+            f"{user_name}さんへのフレンドリーな挨拶を生成してください",
+            config=config,  # トレース用にconfigを渡す
         )
         
         return NodeOutputs(
@@ -227,12 +229,13 @@ interview:
 設定の読み込み：
 
 ```python
-from agent_contracts.config import load_config, get_config
+from agent_contracts.config import load_config, set_config, get_config
 
-# ファイルから読み込み
-load_config("path/to/agent_config.yaml")
+# ファイルから読み込みグローバルに設定
+config = load_config("path/to/agent_config.yaml")
+set_config(config)
 
-# 設定にアクセス
+# どこからでも設定にアクセス
 config = get_config()
 print(config.supervisor.max_iterations)
 ```

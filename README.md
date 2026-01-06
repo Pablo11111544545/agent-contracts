@@ -2,7 +2,7 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-passing-success)](tests/)
+[![CI](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml)
 
 English | [日本語](README.ja.md)
 
@@ -66,13 +66,14 @@ class GreetingNode(ModularNode):
         ],
     )
 
-    async def execute(self, inputs: NodeInputs) -> NodeOutputs:
+    async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
         request = inputs.get_slice("request")
         user_name = request.get("params", {}).get("name", "User")
         
-        # Use LLM for greeting
+        # Use LLM for greeting (pass config for tracing)
         response = await self.llm.ainvoke(
-            f"Generate a friendly greeting for {user_name}"
+            f"Generate a friendly greeting for {user_name}",
+            config=config,
         )
         
         return NodeOutputs(
@@ -228,12 +229,13 @@ interview:
 Load configuration:
 
 ```python
-from agent_contracts.config import load_config, get_config
+from agent_contracts.config import load_config, set_config, get_config
 
-# Load from file
-load_config("path/to/agent_config.yaml")
+# Load from file and set as global config
+config = load_config("path/to/agent_config.yaml")
+set_config(config)
 
-# Access config
+# Access config anywhere
 config = get_config()
 print(config.supervisor.max_iterations)
 ```

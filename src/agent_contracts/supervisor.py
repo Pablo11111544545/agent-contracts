@@ -239,6 +239,24 @@ Last active node suggested: {child_decision or 'None'}
                 config=config,
             )
             
+            # Validate LLM decision against valid nodes
+            valid_nodes = set(self.registry.get_supervisor_nodes(self.name))
+            valid_nodes.add("done")
+            
+            if result.next_node not in valid_nodes:
+                self.logger.warning(
+                    f"LLM returned invalid node: {result.next_node}, "
+                    f"valid nodes: {valid_nodes}"
+                )
+                # If rule candidates exist, use the top one
+                if rule_candidates:
+                    return SupervisorDecision(
+                        next_node=rule_candidates[0],
+                        reasoning=f"LLM returned invalid '{result.next_node}', using rule candidate"
+                    )
+                # Otherwise return None to trigger fallback
+                return None
+            
             return result
             
         except Exception as e:
