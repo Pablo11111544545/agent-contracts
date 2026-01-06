@@ -48,6 +48,9 @@ class NodeRegistry:
         contract = node_class.CONTRACT
         self._validate_contract(contract)
         
+        if contract.name in self._nodes:
+            raise ValueError(f"Node {contract.name} is already registered")
+            
         self._nodes[contract.name] = node_class
         self._contracts[contract.name] = contract
         

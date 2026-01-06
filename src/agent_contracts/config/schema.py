@@ -4,25 +4,23 @@ Pydantic-based configuration models for the framework.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from typing import Dict, List
+from pydantic import BaseModel, Field
 
 
-@dataclass
-class SupervisorConfig:
+class SupervisorConfig(BaseModel):
     """Supervisor configuration."""
     max_iterations: int = 10
-    terminal_response_types: list[str] = field(default_factory=list)
+    terminal_response_types: List[str] = Field(default_factory=list)
 
 
-@dataclass
-class InterviewConfig:
+class InterviewConfig(BaseModel):
     """Interview configuration."""
     max_turns: int = 10
     max_questions: int = 5
 
 
-@dataclass
-class FrameworkConfig:
+class FrameworkConfig(BaseModel):
     """Framework-wide configuration.
     
     Can be loaded from YAML.
@@ -33,5 +31,5 @@ class FrameworkConfig:
         )
         set_config(config)
     """
-    supervisor: SupervisorConfig = field(default_factory=SupervisorConfig)
-    interview: dict[str, InterviewConfig] = field(default_factory=dict)
+    supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
+    interview: Dict[str, InterviewConfig] = Field(default_factory=dict)
