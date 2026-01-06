@@ -1,0 +1,38 @@
+# Questions Configuration Example
+# Copy this to your project and customize
+
+# Input types:
+#   - single_choice: Single selection (radio buttons)
+#   - multi_choice: Multiple selection (checkboxes)
+#   - text: Free text input
+#   - image_upload: Image upload
+
+example_questions:
+  sample_single_choice:
+    id: sample_single_choice
+    text: "What is your preference?"
+    input_type: single_choice
+    options:
+      - { label: "Option A", value: "a" }
+      - { label: "Option B", value: "b" }
+      - { label: "Option C", value: "c" }
+
+  sample_text:
+    id: sample_text
+    text: "Please describe your requirements"
+    input_type: text
+    placeholder: "Enter your response here..."
+
+  sample_multi_choice:
+    id: sample_multi_choice
+    text: "Select all that apply"
+    input_type: multi_choice
+    options:
+      - { label: "Feature 1", value: "feature1" }
+      - { label: "Feature 2", value: "feature2" }
+      - { label: "Feature 3", value: "feature3" }
+
+  sample_image:
+    id: sample_image
+    text: "Please upload an image"
+    input_type: image_upload

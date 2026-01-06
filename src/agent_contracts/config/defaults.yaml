@@ -1,0 +1,20 @@
+# Base configuration schema for agent-contracts
+# Copy this to your project and customize
+
+supervisor:
+  max_iterations: 10
+
+response_types:
+  terminal_states: []
+  # Add your terminal response types here
+  # Example:
+  # - interview
+  # - proposals
+  # - error
+
+interview: {}
+  # Add interview configurations here
+  # Example:
+  # my_interviewer:
+  #   max_turns: 10
+  #   max_questions: 5
