@@ -127,8 +127,7 @@ class ModularNode(ABC):
         
         # Execute
         try:
-            # Store config as instance attribute for convenience
-            self._config = config
+            # Execute
             outputs = await self.execute(inputs, config=config)
         except Exception as e:
             self.logger.error(f"Node {self.CONTRACT.name} execution failed: {e}")
@@ -215,7 +214,12 @@ class InteractiveNode(ModularNode):
         pass
     
     @abstractmethod
-    async def process_answer(self, context: Any, inputs: NodeInputs) -> bool:
+    async def process_answer(
+        self, 
+        context: Any, 
+        inputs: NodeInputs, 
+        config: RunnableConfig | None = None
+    ) -> bool:
         """Process user answer.
         
         Returns:
@@ -224,11 +228,21 @@ class InteractiveNode(ModularNode):
         pass
     
     @abstractmethod
-    async def generate_question(self, context: Any, inputs: NodeInputs) -> NodeOutputs:
+    async def generate_question(
+        self, 
+        context: Any, 
+        inputs: NodeInputs, 
+        config: RunnableConfig | None = None
+    ) -> NodeOutputs:
         """Generate and return next question."""
         pass
 
-    async def create_completion_output(self, context: Any, inputs: NodeInputs) -> NodeOutputs:
+    async def create_completion_output(
+        self, 
+        context: Any, 
+        inputs: NodeInputs,
+        config: RunnableConfig | None = None
+    ) -> NodeOutputs:
         """Create output for completion (default: done flag)."""
         return NodeOutputs(_internal={"decision": "done"})
     
@@ -238,18 +252,16 @@ class InteractiveNode(ModularNode):
         config: Optional[RunnableConfig] = None,
     ) -> NodeOutputs:
         """Standard execution flow."""
-        # Store config for use in sub-methods
-        self._config = config
         
         # 0. Prepare context
         context = self.prepare_context(inputs)
         
         # 1. Process answer
-        await self.process_answer(context, inputs)
+        await self.process_answer(context, inputs, config=config)
         
         # 2. Check completion
         if self.check_completion(context, inputs):
-            return await self.create_completion_output(context, inputs)
+            return await self.create_completion_output(context, inputs, config=config)
             
         # 3. Generate question
-        return await self.generate_question(context, inputs)
+        return await self.generate_question(context, inputs, config=config)
