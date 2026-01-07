@@ -276,8 +276,11 @@ from agent_contracts import ContractVisualizer, get_node_registry
 
 registry = get_node_registry()
 # ... ノードを登録 ...
+# ... グラフを構築 ...
+# compiled_graph = graph.compile()
 
-visualizer = ContractVisualizer(registry)
+# グラフを渡すことでLangGraphのフローも可視化可能
+visualizer = ContractVisualizer(registry, graph=compiled_graph)
 doc = visualizer.generate_architecture_doc()
 
 with open("ARCHITECTURE.md", "w") as f:
@@ -289,6 +292,7 @@ with open("ARCHITECTURE.md", "w") as f:
 | セクション | 説明 |
 |-----------|------|
 | **📦 State Slices** | 全スライスの読み書き関係 + ERダイアグラム |
+| **🔗 LangGraph Node Flow** | コンパイルされたグラフのMermaid可視化 |
 | **🎯 System Hierarchy** | Supervisor-Node構造のMermaidフローチャート |
 | **🔀 Data Flow** | 共有スライスによるノード依存関係 |
 | **⚡ Trigger Hierarchy** | 優先度順トリガー (🔴高 → 🟢低) |
@@ -299,6 +303,9 @@ with open("ARCHITECTURE.md", "w") as f:
 セクションを個別に生成することも可能：
 
 ```python
+# LangGraphフロー
+print(visualizer.generate_langgraph_flow())
+
 # 状態スライスドキュメント
 print(visualizer.generate_state_slices_section())
 

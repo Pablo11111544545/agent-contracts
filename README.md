@@ -276,8 +276,11 @@ from agent_contracts import ContractVisualizer, get_node_registry
 
 registry = get_node_registry()
 # ... register your nodes ...
+# ... build your graph ...
+# compiled_graph = graph.compile()
 
-visualizer = ContractVisualizer(registry)
+# Pass the graph to visualize the LangGraph flow
+visualizer = ContractVisualizer(registry, graph=compiled_graph)
 doc = visualizer.generate_architecture_doc()
 
 with open("ARCHITECTURE.md", "w") as f:
@@ -291,6 +294,7 @@ The generated document includes:
 | Section | Description |
 |---------|-------------|
 | **📦 State Slices** | All slices with readers/writers + ER diagram |
+| **🔗 LangGraph Node Flow** | Mermaid visualization of the compiled LangGraph |
 | **🎯 System Hierarchy** | Supervisor-Node structure with Mermaid flowchart |
 | **🔀 Data Flow** | Node dependencies via shared slices |
 | **⚡ Trigger Hierarchy** | Priority-ordered triggers (🔴 high → 🟢 low) |
@@ -301,6 +305,9 @@ The generated document includes:
 You can also generate sections individually:
 
 ```python
+# LangGraph flow
+print(visualizer.generate_langgraph_flow())
+
 # State slices documentation
 print(visualizer.generate_state_slices_section())
 
