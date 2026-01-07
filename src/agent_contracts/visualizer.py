@@ -132,24 +132,30 @@ class ContractVisualizer:
     
     def _build_slice_relationships(self) -> list[tuple[str, str, str]]:
         """Build slice relationships from node I/O patterns."""
-        relationships: list[tuple[str, str, str]] = []
-        seen = set()
+        # Count how many nodes transform from one slice to another
+        transform_counts: dict[tuple[str, str], int] = defaultdict(int)
         
         for name in self.registry.get_all_nodes():
             contract = self.registry.get_contract(name)
             if not contract:
                 continue
             
-            # Create relationships: reads -> writes
             for read_slice in contract.reads:
                 for write_slice in contract.writes:
                     if read_slice != write_slice:
-                        key = (read_slice, write_slice)
-                        if key not in seen:
-                            seen.add(key)
-                            relationships.append((read_slice, write_slice, "transforms"))
+                        transform_counts[(read_slice, write_slice)] += 1
         
-        return relationships[:10]  # Limit to avoid clutter
+        # Sort by count and take top relationships
+        sorted_transforms = sorted(
+            transform_counts.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )[:6]  # Limit to 6 most common
+        
+        return [
+            (src, dst, f"{count} nodes")
+            for (src, dst), count in sorted_transforms
+        ]
     
     # =========================================================================
     # Hierarchy Diagram
@@ -230,45 +236,75 @@ class ContractVisualizer:
     # =========================================================================
     
     def generate_dataflow_diagram(self) -> str:
-        """Generate data flow diagram based on slice dependencies."""
-        dependencies = self.registry.analyze_data_flow()
+        """Generate data flow diagram based on slice dependencies.
         
-        if not any(dependencies.values()):
+        Uses a slice-centric view grouped by supervisor for readability.
+        """
+        # Group nodes by supervisor
+        supervisors: dict[str, list[str]] = defaultdict(list)
+        for name in self.registry.get_all_nodes():
+            contract = self.registry.get_contract(name)
+            if contract:
+                supervisors[contract.supervisor].append(name)
+        
+        if not supervisors:
             return ""
         
         lines = [
             "## 🔀 Data Flow",
             "",
-            "> Arrows show data dependencies between nodes (via shared slices)",
+            "> Shows which slices each supervisor's nodes read and write",
             "",
             "```mermaid",
             "flowchart LR",
         ]
         
-        # Add nodes
+        # Collect all slices
+        all_slices: set[str] = set()
         for name in self.registry.get_all_nodes():
             contract = self.registry.get_contract(name)
-            icon = self._get_node_icon(contract)
-            safe_name = self._safe_id(name)
-            lines.append(f'    {safe_name}["{icon} {name}"]')
+            if contract:
+                all_slices.update(contract.reads)
+                all_slices.update(contract.writes)
         
-        # Add edges
-        added_edges = set()
-        for node, deps in dependencies.items():
-            for dep in deps:
-                edge = (self._safe_id(dep), self._safe_id(node))
-                if edge not in added_edges:
-                    added_edges.add(edge)
-                    # Find shared slices for label
-                    node_contract = self.registry.get_contract(node)
-                    dep_contract = self.registry.get_contract(dep)
-                    if node_contract and dep_contract:
-                        shared = set(node_contract.reads) & set(dep_contract.writes)
-                        if shared:
-                            label = ", ".join(sorted(shared)[:2])
-                            lines.append(f'    {edge[0]} -->|"{label}"| {edge[1]}')
-                        else:
-                            lines.append(f"    {edge[0]} --> {edge[1]}")
+        # Add slice nodes (excluding _internal for clarity)
+        visible_slices = [s for s in sorted(all_slices) if not s.startswith('_')]
+        for slice_name in visible_slices:
+            lines.append(f'    {self._safe_id(slice_name)}[("{slice_name}")]')
+        
+        lines.append("")
+        
+        # Add supervisor subgraphs with simplified edges
+        for sup_name, nodes in sorted(supervisors.items()):
+            safe_sup = self._safe_id(sup_name)
+            lines.append(f'    subgraph {safe_sup}["{sup_name}"]')
+            lines.append(f'        {safe_sup}_nodes[" "]')
+            lines.append("    end")
+            
+            # Aggregate reads and writes for this supervisor
+            sup_reads: set[str] = set()
+            sup_writes: set[str] = set()
+            for node_name in nodes:
+                contract = self.registry.get_contract(node_name)
+                if contract:
+                    sup_reads.update(s for s in contract.reads if not s.startswith('_'))
+                    sup_writes.update(s for s in contract.writes if not s.startswith('_'))
+            
+            # Add edges from slices to supervisor (reads)
+            for slice_name in sup_reads:
+                lines.append(f'    {self._safe_id(slice_name)} --> {safe_sup}')
+            
+            # Add edges from supervisor to slices (writes)
+            for slice_name in sup_writes:
+                if slice_name not in sup_reads:  # Avoid duplicate arrows
+                    lines.append(f'    {safe_sup} --> {self._safe_id(slice_name)}')
+        
+        # Styling
+        lines.extend([
+            "",
+            "    style request fill:#3498db,stroke:#2980b9,color:#fff",
+            "    style response fill:#e67e22,stroke:#d35400,color:#fff",
+        ])
         
         lines.append("```")
         

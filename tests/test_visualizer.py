@@ -212,12 +212,13 @@ class TestContractVisualizer:
         assert "```mermaid" in section
         assert "flowchart LR" in section
         
-        # Check nodes are included
-        assert "interviewer" in section
-        assert "like_handler" in section
+        # Check slices are shown (new slice-centric view)
+        assert "request" in section
+        assert "response" in section
         
-        # Check edge labels contain slice names
-        assert "shopping" in section or "card" in section
+        # Check supervisors are shown as subgraphs
+        assert "shopping" in section
+        assert "card" in section
 
 
 class TestPriorityIcons:
