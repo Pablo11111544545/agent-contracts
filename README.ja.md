@@ -1,7 +1,7 @@
 # agent-contracts
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![CI](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml)
 
 **LangGraphエージェント構築のための、モジュラーでコントラクト駆動のノードアーキテクチャ**
@@ -365,7 +365,9 @@ from agent_contracts import (
 
 ## 📄 ライセンス
 
-このプロジェクトはMITライセンスの下で公開されています - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
+このプロジェクトはMozilla Public License 2.0 (MPL-2.0)の下で公開されています - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
+
+> **なぜMPL 2.0？** コミュニティからの貢献を促進しつつ、統合のしやすさを維持するためにMPL 2.0を選択しました。`agent-contracts`のコアファイルへの改善は共有が必要ですが、独自のノードや拡張機能はあなたのものとして保持できます。
 
 ---
 
