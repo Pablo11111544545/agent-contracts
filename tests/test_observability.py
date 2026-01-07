@@ -34,7 +34,7 @@ async def test_supervisor_adds_trace_info():
     """Test that GenericSupervisor adds trace info."""
     # Mock registry
     mock_registry = MagicMock()
-    mock_registry.evaluate_triggers.return_value = ["mock_node"]
+    mock_registry.evaluate_triggers.return_value = [(100, "mock_node")]
     
     supervisor = GenericSupervisor(
         supervisor_name="main",
