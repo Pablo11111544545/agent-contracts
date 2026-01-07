@@ -210,15 +210,18 @@ class TestContractVisualizer:
         
         # Check Mermaid flowchart
         assert "```mermaid" in section
-        assert "flowchart LR" in section
+        assert "flowchart TB" in section
         
-        # Check slices are shown (new slice-centric view)
+        # Check slices are shown in State subgraph
         assert "request" in section
         assert "response" in section
         
         # Check supervisors are shown as subgraphs
         assert "shopping" in section
         assert "card" in section
+        
+        # Check terminal node styling
+        assert "terminal" in section
 
 
 class TestPriorityIcons:

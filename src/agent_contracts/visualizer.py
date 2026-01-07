@@ -236,9 +236,13 @@ class ContractVisualizer:
     # =========================================================================
     
     def generate_dataflow_diagram(self) -> str:
-        """Generate data flow diagram based on slice dependencies.
+        """Generate data flow diagram showing key data paths.
         
-        Uses a slice-centric view grouped by supervisor for readability.
+        Shows:
+        - Slices as central data stores
+        - Entry points (nodes reading request)
+        - Terminal nodes (marked with is_terminal)
+        - Cross-supervisor data connections
         """
         # Group nodes by supervisor
         supervisors: dict[str, list[str]] = defaultdict(list)
@@ -253,60 +257,145 @@ class ContractVisualizer:
         lines = [
             "## 🔀 Data Flow",
             "",
-            "> Shows which slices each supervisor's nodes read and write",
+            "> Key data paths through the system",
             "",
             "```mermaid",
-            "flowchart LR",
+            "flowchart TB",
         ]
         
-        # Collect all slices
-        all_slices: set[str] = set()
+        # Find key nodes: entry points (read request) and terminals
+        entry_nodes: list[str] = []
+        terminal_nodes: list[str] = []
         for name in self.registry.get_all_nodes():
             contract = self.registry.get_contract(name)
             if contract:
-                all_slices.update(contract.reads)
-                all_slices.update(contract.writes)
+                if "request" in contract.reads:
+                    entry_nodes.append(name)
+                if contract.is_terminal:
+                    terminal_nodes.append(name)
         
-        # Add slice nodes (excluding _internal for clarity)
-        visible_slices = [s for s in sorted(all_slices) if not s.startswith('_')]
-        for slice_name in visible_slices:
-            lines.append(f'    {self._safe_id(slice_name)}[("{slice_name}")]')
+        # Add slices (excluding _internal)
+        key_slices = ["request", "response"]
+        for name in self.registry.get_all_nodes():
+            contract = self.registry.get_contract(name)
+            if contract:
+                for s in contract.reads + contract.writes:
+                    if not s.startswith('_') and s not in key_slices:
+                        key_slices.append(s)
+        
+        # Slices subgraph
+        lines.append('    subgraph slices["📦 State"]')
+        for slice_name in sorted(set(key_slices)):
+            icon = "📥" if slice_name == "request" else "📤" if slice_name == "response" else "📁"
+            lines.append(f'        {self._safe_id(slice_name)}[("{icon} {slice_name}")]')
+        lines.append("    end")
+        lines.append("")
+        
+        # Add supervisor subgraphs with their nodes
+        for sup_name, nodes in sorted(supervisors.items()):
+            safe_sup = self._safe_id(sup_name)
+            lines.append(f'    subgraph {safe_sup}["🎯 {sup_name}"]')
+            lines.append("        direction LR")
+            for node_name in nodes:
+                contract = self.registry.get_contract(node_name)
+                icon = self._get_node_icon(contract)
+                safe_node = self._safe_id(node_name)
+                lines.append(f'        {safe_node}["{icon} {node_name}"]')
+            lines.append("    end")
         
         lines.append("")
         
-        # Add supervisor subgraphs with simplified edges
-        for sup_name, nodes in sorted(supervisors.items()):
-            safe_sup = self._safe_id(sup_name)
-            lines.append(f'    subgraph {safe_sup}["{sup_name}"]')
-            lines.append(f'        {safe_sup}_nodes[" "]')
-            lines.append("    end")
-            
-            # Aggregate reads and writes for this supervisor
-            sup_reads: set[str] = set()
-            sup_writes: set[str] = set()
-            for node_name in nodes:
-                contract = self.registry.get_contract(node_name)
-                if contract:
-                    sup_reads.update(s for s in contract.reads if not s.startswith('_'))
-                    sup_writes.update(s for s in contract.writes if not s.startswith('_'))
-            
-            # Add edges from slices to supervisor (reads)
-            for slice_name in sup_reads:
-                lines.append(f'    {self._safe_id(slice_name)} --> {safe_sup}')
-            
-            # Add edges from supervisor to slices (writes)
-            for slice_name in sup_writes:
-                if slice_name not in sup_reads:  # Avoid duplicate arrows
-                    lines.append(f'    {safe_sup} --> {self._safe_id(slice_name)}')
+        # Add edges: request -> entry nodes
+        lines.append("    %% Entry points")
+        for node_name in entry_nodes[:5]:  # Limit to 5
+            lines.append(f"    request --> {self._safe_id(node_name)}")
+        
+        # Add edges: terminal nodes -> response
+        lines.append("    %% Terminal outputs")
+        for node_name in terminal_nodes:
+            lines.append(f"    {self._safe_id(node_name)} --> response")
+        
+        # Cross-supervisor data flows (via shared slices, excluding request/response)
+        lines.append("    %% Cross-supervisor data")
+        cross_flows: set[tuple[str, str, str]] = set()
+        for sup1, nodes1 in supervisors.items():
+            for sup2, nodes2 in supervisors.items():
+                if sup1 >= sup2:  # Avoid duplicates
+                    continue
+                # Find shared slices between supervisors
+                writes1: set[str] = set()
+                reads2: set[str] = set()
+                for n in nodes1:
+                    c = self.registry.get_contract(n)
+                    if c:
+                        writes1.update(s for s in c.writes if not s.startswith('_') and s not in ["request", "response"])
+                for n in nodes2:
+                    c = self.registry.get_contract(n)
+                    if c:
+                        reads2.update(s for s in c.reads if not s.startswith('_') and s not in ["request", "response"])
+                shared = writes1 & reads2
+                for slice_name in shared:
+                    cross_flows.add((sup1, slice_name, sup2))
+        
+        for sup1, slice_name, sup2 in list(cross_flows)[:5]:  # Limit
+            lines.append(f"    {self._safe_id(sup1)} -->|{slice_name}| {self._safe_id(slice_name)}")
+            lines.append(f"    {self._safe_id(slice_name)} --> {self._safe_id(sup2)}")
         
         # Styling
         lines.extend([
             "",
-            "    style request fill:#3498db,stroke:#2980b9,color:#fff",
-            "    style response fill:#e67e22,stroke:#d35400,color:#fff",
+            "    classDef slice fill:#f5f5f5,stroke:#999",
+            "    classDef terminal fill:#e94560,stroke:#16213e,color:#fff",
         ])
+        terminal_ids = [self._safe_id(n) for n in terminal_nodes]
+        if terminal_ids:
+            lines.append(f"    class {','.join(terminal_ids)} terminal")
         
         lines.append("```")
+        
+        # Add detailed node dependencies in collapsible section
+        lines.extend([
+            "",
+            "<details>",
+            "<summary>📊 Detailed Node Dependencies</summary>",
+            "",
+        ])
+        
+        # Build dependency table grouped by supervisor
+        dependencies = self.registry.analyze_data_flow()
+        
+        for sup_name, nodes in sorted(supervisors.items()):
+            sup_deps = [(n, dependencies.get(n, [])) for n in nodes if dependencies.get(n)]
+            if not sup_deps:
+                continue
+                
+            lines.append(f"**{sup_name}**")
+            lines.append("")
+            lines.append("| Node | Depends On (via shared slices) |")
+            lines.append("|:-----|:-------------------------------|")
+            
+            for node_name, deps in sup_deps:
+                if deps:
+                    # Find shared slices for each dependency
+                    dep_info = []
+                    node_contract = self.registry.get_contract(node_name)
+                    for dep in deps[:5]:  # Limit
+                        dep_contract = self.registry.get_contract(dep)
+                        if node_contract and dep_contract:
+                            shared = set(node_contract.reads) & set(dep_contract.writes)
+                            shared_str = ", ".join(sorted(s for s in shared if not s.startswith('_'))[:2])
+                            if shared_str:
+                                dep_info.append(f"`{dep}` ({shared_str})")
+                            else:
+                                dep_info.append(f"`{dep}`")
+                    if dep_info:
+                        lines.append(f"| `{node_name}` | {', '.join(dep_info)} |")
+            
+            lines.append("")
+        
+        lines.extend([
+            "</details>",
+        ])
         
         return "\n".join(lines)
     

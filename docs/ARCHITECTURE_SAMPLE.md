@@ -8,42 +8,24 @@
 
 State is organized into isolated **slices** for separation of concerns.
 
-```mermaid
-erDiagram
-    REQUEST["🔵 request"] {
-        string action
-        string message
-        object params
-    }
-    CONTEXT["🟢 context"] {
-        object user_profile
-        array history
-        object metadata
-    }
-    TASK["🟣 task"] {
-        object current_task
-        array completed_items
-    }
-    RESPONSE["🟠 response"] {
-        string response_type
-        string message
-        object data
-    }
-    
-    REQUEST ||--o{ CONTEXT : "triggers"
-    CONTEXT ||--o{ TASK : "populates"
-    TASK ||--|| RESPONSE : "generates"
-```
+| Slice | Read By | Written By |
+|:------|:--------|:-----------|
+| `request` | `greeter`, `helper`, `analyzer` +3 | - |
+| `context` | `helper`, `analyzer`, `planner` | `greeter`, `analyzer` |
+| `task` | `planner`, `executor`, `reporter` | `helper`, `planner`, `executor` |
+| `response` | - | `greeter`, `helper`, `executor` +1 |
 
 <details>
-<summary>📋 Slice Details</summary>
+<summary>📊 Slice Relationships</summary>
 
-| Slice | Purpose | Key Fields |
-|:------|:--------|:-----------|
-| `request` | User input | `action`, `message`, `params` |
-| `context` | Session context | `user_profile`, `history`, `metadata` |
-| `task` | Task state | `current_task`, `completed_items` |
-| `response` | API Response | `response_type`, `message`, `data` |
+```mermaid
+erDiagram
+    REQUEST ||--o{ CONTEXT : "3 nodes"
+    REQUEST ||--o{ TASK : "2 nodes"
+    CONTEXT ||--o{ TASK : "2 nodes"
+    CONTEXT ||--o{ RESPONSE : "2 nodes"
+    TASK ||--o{ RESPONSE : "3 nodes"
+```
 
 </details>
 
@@ -53,34 +35,21 @@ erDiagram
 
 ```mermaid
 flowchart TB
-    subgraph root["🌐 Entry Point"]
-        router["🚦 Router"]
-    end
-    
     subgraph main["🎯 Main Supervisor"]
         direction LR
-        greeter["� greeter"]
+        greeter["👋 greeter"]
         helper["💡 helper"]
-        analyzer["� analyzer"]
+        analyzer["📊 analyzer"]
     end
     
-    subgraph task["📋 Task Supervisor"]
+    subgraph task_sup["📋 Task Supervisor"]
         direction LR
-        planner["� planner"]
+        planner["📝 planner"]
         executor["⚙️ executor"]
         reporter["📄 reporter"]
     end
-    
-    router --> main
-    router --> task
-    main -.->|"task ready"| task
-    
-    classDef supervisor fill:#1a1a2e,stroke:#16213e,color:#fff
-    classDef node fill:#0f3460,stroke:#16213e,color:#fff
+
     classDef terminal fill:#e94560,stroke:#16213e,color:#fff
-    
-    class main,task supervisor
-    class greeter,helper,analyzer,planner,executor node
     class reporter terminal
 ```
 
@@ -88,39 +57,63 @@ flowchart TB
 
 ## 🔀 Data Flow
 
-> Arrows show which slices nodes **read** and **write**
+> Key data paths through the system
 
 ```mermaid
-flowchart LR
-    subgraph slices["State Slices"]
-        req[("📥 request")]
-        ctx[("�️ context")]
-        tsk[("📋 task")]
-        resp[("📤 response")]
+flowchart TB
+    subgraph slices["📦 State"]
+        request[("📥 request")]
+        context[("📁 context")]
+        task_slice[("📁 task")]
+        response[("📤 response")]
     end
-    
-    subgraph nodes["Nodes"]
-        greeter["greeter"]
-        helper["helper"]
-        executor["executor"]
+
+    subgraph main["🎯 main"]
+        direction LR
+        greeter["👋 greeter"]
+        helper["💡 helper"]
+        analyzer["📊 analyzer"]
     end
-    
-    req --> greeter
-    greeter --> ctx
-    greeter --> resp
-    
-    req --> helper
-    ctx --> helper
-    helper --> tsk
-    
-    tsk --> executor
-    executor --> resp
-    
-    style req fill:#3498db,stroke:#2980b9,color:#fff
-    style ctx fill:#2ecc71,stroke:#27ae60,color:#fff
-    style tsk fill:#9b59b6,stroke:#8e44ad,color:#fff
-    style resp fill:#e67e22,stroke:#d35400,color:#fff
+    subgraph task_sup["🎯 task"]
+        direction LR
+        planner["📝 planner"]
+        executor["⚙️ executor"]
+        reporter["🔚 reporter"]
+    end
+
+    %% Entry points
+    request --> greeter
+    request --> helper
+    request --> planner
+    %% Terminal outputs
+    reporter --> response
+    %% Cross-supervisor data
+    main -->|context| context
+    context --> task_sup
+
+    classDef slice fill:#f5f5f5,stroke:#999
+    classDef terminal fill:#e94560,stroke:#16213e,color:#fff
+    class reporter terminal
 ```
+
+<details>
+<summary>📊 Detailed Node Dependencies</summary>
+
+**main**
+
+| Node | Depends On (via shared slices) |
+|:-----|:-------------------------------|
+| `helper` | `greeter` (context), `analyzer` (context) |
+| `analyzer` | `greeter` (context) |
+
+**task**
+
+| Node | Depends On (via shared slices) |
+|:-----|:-------------------------------|
+| `executor` | `helper` (task), `planner` (task) |
+| `reporter` | `helper` (task), `planner` (task), `executor` (task) |
+
+</details>
 
 ---
 
@@ -132,26 +125,51 @@ flowchart LR
 
 | Priority | Node | Condition | Hint |
 |:--------:|:-----|:----------|:-----|
-| 🔴 **100** | `greeter` | `request.action == "greet"` | Handle greeting |
-| 🟡 **50** | `analyzer` | `context.needs_analysis == true` | Run analysis |
+| 🔴 **100** | `greeter` | `request.action=greet` | Handle greeting |
+| 🟡 **50** | `analyzer` | `context.needs_analysis=true` | Run analysis |
 | 🟢 **10** | `helper` | _(default)_ | General assistance |
+
+<details>
+<summary>📊 main Priority Chain</summary>
 
 ```mermaid
 flowchart TD
-    subgraph priority["Priority Chain"]
+    subgraph main["main"]
         direction TB
-        p100["🔴 100: greeter<br/><small>when: action=greet</small>"]
-        p50["🟡 50: analyzer<br/><small>when: needs_analysis</small>"]
-        p10["🟢 10: helper<br/><small>default fallback</small>"]
+        greeter["🔴 P100: greeter"]
+        analyzer["🟡 P50: analyzer"]
+        greeter -->|"not matched"| analyzer
+        helper["🟢 P10: helper"]
+        analyzer -->|"not matched"| helper
     end
-    
-    p100 -->|"not matched"| p50
-    p50 -->|"not matched"| p10
-    
-    style p100 fill:#e74c3c,stroke:#c0392b,color:#fff
-    style p50 fill:#f39c12,stroke:#d68910,color:#fff
-    style p10 fill:#27ae60,stroke:#1e8449,color:#fff
 ```
+
+</details>
+
+### 🎯 Task Supervisor
+
+| Priority | Node | Condition | Hint |
+|:--------:|:-----|:----------|:-----|
+| 🟡 **80** | `planner` | `task.needs_planning=true` | Create plan |
+| 🟡 **50** | `executor` | `task.plan_ready=true` | Execute tasks |
+| 🟢 **30** | `reporter` | `task.execution_done=true` | Generate report |
+
+<details>
+<summary>📊 task Priority Chain</summary>
+
+```mermaid
+flowchart TD
+    subgraph task["task"]
+        direction TB
+        planner["🟡 P80: planner"]
+        executor["🟡 P50: executor"]
+        planner -->|"not matched"| executor
+        reporter["🟢 P30: reporter"]
+        executor -->|"not matched"| reporter
+    end
+```
+
+</details>
 
 ---
 
@@ -159,11 +177,11 @@ flowchart TD
 
 | Node | Supervisor | Reads | Writes | LLM | Terminal |
 |:-----|:-----------|:------|:-------|:---:|:--------:|
+| `analyzer` | main | `context` | `context` | ✅ | |
+| `executor` | task | `task` | `task`, `response` | | |
 | `greeter` | main | `request` | `context`, `response` | ✅ | |
 | `helper` | main | `request`, `context` | `task`, `response` | ✅ | |
-| `analyzer` | main | `context` | `context` | ✅ | |
 | `planner` | task | `request`, `task` | `task` | ✅ | |
-| `executor` | task | `task` | `task`, `response` | | |
 | `reporter` | task | `task` | `response` | ✅ | 🔚 |
 
 <details>
