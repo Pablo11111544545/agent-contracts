@@ -5,7 +5,7 @@ data flow analysis, and graph construction support.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 from agent_contracts.contracts import NodeContract, TriggerCondition
 from agent_contracts.utils.logging import get_logger
@@ -66,7 +66,7 @@ class NodeRegistry:
             if slice_name not in self._valid_slices:
                 logger.warning(f"Unknown slice in writes: {slice_name}")
             if slice_name == "request":
-                logger.warning(f"Writing to 'request' slice is discouraged")
+                logger.warning("Writing to 'request' slice is discouraged")
     
     def add_valid_slice(self, slice_name: str) -> None:
         """Add a valid slice name."""
@@ -173,7 +173,12 @@ class NodeRegistry:
             return value
         else:
             # Flat key: search all slices
-            for slice_name in list(self._valid_slices):
+            preferred_order = ["request", "response", "_internal"]
+            ordered_slices = [
+                s for s in preferred_order if s in self._valid_slices
+            ] + sorted(self._valid_slices - set(preferred_order))
+
+            for slice_name in ordered_slices:
                 slice_data = state.get(slice_name, {})
                 if isinstance(slice_data, dict) and key in slice_data:
                     return slice_data[key]

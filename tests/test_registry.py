@@ -1,6 +1,5 @@
 import pytest
 from agent_contracts import NodeRegistry, NodeContract, ModularNode, NodeInputs, NodeOutputs
-from unittest.mock import MagicMock
 
 class MockNode(ModularNode):
     CONTRACT = NodeContract(

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QuestionOption(BaseModel):
@@ -32,7 +32,7 @@ class QuestionDefinition(BaseModel):
     id: str
     text: str
     input_type: Literal["single_choice", "multi_choice", "text", "image_upload"]
-    options: list[QuestionOption] = []
+    options: list[QuestionOption] = Field(default_factory=list)
     placeholder: str | None = None
 
 

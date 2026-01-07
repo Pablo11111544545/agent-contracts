@@ -5,7 +5,7 @@ Registry trigger conditions and LLM.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -190,7 +190,7 @@ class GenericSupervisor:
             )
         
         if child_decision:
-             return SupervisorDecision(
+            return SupervisorDecision(
                 next_node=child_decision,
                 reasoning="Child node suggestion (fallback)"
             )

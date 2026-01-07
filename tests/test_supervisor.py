@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from agent_contracts import GenericSupervisor, NodeContract, TriggerCondition
-from langchain_core.messages import AIMessage
 
 @pytest.fixture
 def mock_registry():
@@ -112,4 +111,3 @@ class TestGenericSupervisor:
         
         result = await supervisor.decide(inputs)
         assert result.next_node == "node2"
-

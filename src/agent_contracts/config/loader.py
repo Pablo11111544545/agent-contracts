@@ -5,7 +5,6 @@ YAML-based configuration loading with caching.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -30,18 +29,18 @@ def load_config(path: Path | str) -> FrameworkConfig:
         FrameworkConfig instance
     """
     with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = yaml.safe_load(f) or {}
     
     # Parse supervisor config
-    supervisor_data = data.get("supervisor", {})
-    response_types = data.get("response_types", {})
+    supervisor_data = data.get("supervisor", {}) if isinstance(data, dict) else {}
+    response_types = data.get("response_types", {}) if isinstance(data, dict) else {}
     supervisor = SupervisorConfig(
         max_iterations=supervisor_data.get("max_iterations", 10),
         terminal_response_types=response_types.get("terminal_states", []),
     )
     
     # Parse interview configs
-    interview_data = data.get("interview", {})
+    interview_data = data.get("interview", {}) if isinstance(data, dict) else {}
     interview: dict[str, InterviewConfig] = {}
     for name, config in interview_data.items():
         interview[name] = InterviewConfig(
@@ -55,11 +54,11 @@ def load_config(path: Path | str) -> FrameworkConfig:
     )
 
 
-def set_config(config: FrameworkConfig) -> None:
+def set_config(config: FrameworkConfig | None) -> None:
     """Set global framework configuration.
     
     Args:
-        config: FrameworkConfig instance
+        config: FrameworkConfig instance (or None to reset)
     """
     global _config
     _config = config
@@ -91,10 +90,13 @@ def load_questions(path: Path | str) -> QuestionsConfig:
         QuestionsConfig (dict of question groups)
     """
     with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = yaml.safe_load(f) or {}
     
     # Validate with Pydantic
     result: QuestionsConfig = {}
+    if not isinstance(data, dict):
+        return {}
+
     for group_name, questions in data.items():
         if not isinstance(questions, dict):
             continue
