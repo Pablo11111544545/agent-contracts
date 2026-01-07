@@ -28,6 +28,7 @@ from agent_contracts.state import (
     merge_slice_updates,
 )
 from agent_contracts.router import BaseActionRouter
+from agent_contracts.visualizer import ContractVisualizer
 
 __version__ = "0.1.0"
 
@@ -61,4 +62,6 @@ __all__ = [
     "merge_slice_updates",
     # Router
     "BaseActionRouter",
+    # Visualizer
+    "ContractVisualizer",
 ]

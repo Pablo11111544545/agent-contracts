@@ -22,6 +22,7 @@ English | [日本語](README.ja.md)
 - **💬 Interactive Nodes**: Built-in base class for conversational agents with interview patterns
 - **📊 Typed State Management**: Pydantic-based state slices with validation
 - **⚙️ YAML Configuration**: Externalize settings with Pydantic validation
+- **🏗️ Architecture Visualization**: Generate comprehensive architecture docs from contracts
 
 ---
 
@@ -266,6 +267,60 @@ print(config.supervisor.max_iterations)
  
  ---
  
+ ## 🏗️ Architecture Visualization
+
+Generate comprehensive architecture documentation from your registered contracts:
+
+```python
+from agent_contracts import ContractVisualizer, get_node_registry
+
+registry = get_node_registry()
+# ... register your nodes ...
+
+visualizer = ContractVisualizer(registry)
+doc = visualizer.generate_architecture_doc()
+
+with open("ARCHITECTURE.md", "w") as f:
+    f.write(doc)
+```
+
+### Generated Sections
+
+The generated document includes:
+
+| Section | Description |
+|---------|-------------|
+| **📦 State Slices** | All slices with readers/writers + ER diagram |
+| **🎯 System Hierarchy** | Supervisor-Node structure with Mermaid flowchart |
+| **🔀 Data Flow** | Node dependencies via shared slices |
+| **⚡ Trigger Hierarchy** | Priority-ordered triggers (🔴 high → 🟢 low) |
+| **📚 Nodes Reference** | Complete node details table |
+
+### Individual Sections
+
+You can also generate sections individually:
+
+```python
+# State slices documentation
+print(visualizer.generate_state_slices_section())
+
+# Hierarchy diagram
+print(visualizer.generate_hierarchy_diagram())
+
+# Data flow
+print(visualizer.generate_dataflow_diagram())
+
+# Trigger hierarchy
+print(visualizer.generate_trigger_hierarchy())
+
+# Nodes reference table
+print(visualizer.generate_nodes_reference())
+```
+
+See [ARCHITECTURE_SAMPLE.md](docs/ARCHITECTURE_SAMPLE.md) for example output.
+
+---
+ 
  ## 📚 API Reference
 
 ### Main Exports
@@ -281,6 +336,7 @@ print(config.supervisor.max_iterations)
 | `GenericSupervisor` | LLM-driven routing supervisor |
 | `GraphBuilder` | Automatic LangGraph construction |
 | `BaseAgentState` | Base state class with slices |
+| `ContractVisualizer` | Architecture document generator |
 
 ### State Management
 

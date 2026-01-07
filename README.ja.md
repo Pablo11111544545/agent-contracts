@@ -22,6 +22,7 @@
 - **💬 インタラクティブノード**: インタビューパターンを持つ会話型エージェント用の基底クラス
 - **📊 型付き状態管理**: Pydanticベースの状態スライスとバリデーション
 - **⚙️ YAML設定**: Pydanticバリデーション付きの外部設定
+- **🏗️ アーキテクチャ視覚化**: コントラクトから包括的なドキュメントを自動生成
 
 ---
 
@@ -266,6 +267,58 @@ print(config.supervisor.max_iterations)
  
  ---
  
+ ## 🏗️ アーキテクチャ視覚化
+
+登録されたコントラクトから包括的なアーキテクチャドキュメントを生成：
+
+```python
+from agent_contracts import ContractVisualizer, get_node_registry
+
+registry = get_node_registry()
+# ... ノードを登録 ...
+
+visualizer = ContractVisualizer(registry)
+doc = visualizer.generate_architecture_doc()
+
+with open("ARCHITECTURE.md", "w") as f:
+    f.write(doc)
+```
+
+### 生成されるセクション
+
+| セクション | 説明 |
+|-----------|------|
+| **📦 State Slices** | 全スライスの読み書き関係 + ERダイアグラム |
+| **🎯 System Hierarchy** | Supervisor-Node構造のMermaidフローチャート |
+| **🔀 Data Flow** | 共有スライスによるノード依存関係 |
+| **⚡ Trigger Hierarchy** | 優先度順トリガー (🔴高 → 🟢低) |
+| **📚 Nodes Reference** | 全ノード詳細テーブル |
+
+### 個別セクション生成
+
+セクションを個別に生成することも可能：
+
+```python
+# 状態スライスドキュメント
+print(visualizer.generate_state_slices_section())
+
+# 階層ダイアグラム
+print(visualizer.generate_hierarchy_diagram())
+
+# データフロー
+print(visualizer.generate_dataflow_diagram())
+
+# トリガー階層
+print(visualizer.generate_trigger_hierarchy())
+
+# ノード参照テーブル
+print(visualizer.generate_nodes_reference())
+```
+
+出力例は [ARCHITECTURE_SAMPLE.md](docs/ARCHITECTURE_SAMPLE.md) を参照。
+
+---
+ 
  ## 📚 APIリファレンス
 
 ### 主要エクスポート
@@ -281,6 +334,7 @@ print(config.supervisor.max_iterations)
 | `GenericSupervisor` | LLM駆動ルーティングスーパーバイザー |
 | `GraphBuilder` | LangGraph自動構築 |
 | `BaseAgentState` | スライス付き基底状態クラス |
+| `ContractVisualizer` | アーキテクチャドキュメント生成 |
 
 ### 状態管理
 
