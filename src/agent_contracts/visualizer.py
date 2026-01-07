@@ -287,13 +287,14 @@ class ContractVisualizer:
         lines.append('    subgraph slices["📦 State"]')
         for slice_name in sorted(set(key_slices)):
             icon = "📥" if slice_name == "request" else "📤" if slice_name == "response" else "📁"
-            lines.append(f'        {self._safe_id(slice_name)}[("{icon} {slice_name}")]')
+            slice_id = f"slice_{self._safe_id(slice_name)}"
+            lines.append(f'        {slice_id}[("{icon} {slice_name}")]')
         lines.append("    end")
         lines.append("")
         
         # Add supervisor subgraphs with their nodes
         for sup_name, nodes in sorted(supervisors.items()):
-            safe_sup = self._safe_id(sup_name)
+            safe_sup = f"sup_{self._safe_id(sup_name)}"
             lines.append(f'    subgraph {safe_sup}["🎯 {sup_name}"]')
             lines.append("        direction LR")
             for node_name in nodes:
@@ -308,12 +309,12 @@ class ContractVisualizer:
         # Add edges: request -> entry nodes
         lines.append("    %% Entry points")
         for node_name in entry_nodes[:5]:  # Limit to 5
-            lines.append(f"    request --> {self._safe_id(node_name)}")
+            lines.append(f"    slice_request --> {self._safe_id(node_name)}")
         
         # Add edges: terminal nodes -> response
         lines.append("    %% Terminal outputs")
         for node_name in terminal_nodes:
-            lines.append(f"    {self._safe_id(node_name)} --> response")
+            lines.append(f"    {self._safe_id(node_name)} --> slice_response")
         
         # Cross-supervisor data flows (via shared slices, excluding request/response)
         lines.append("    %% Cross-supervisor data")
@@ -338,8 +339,11 @@ class ContractVisualizer:
                     cross_flows.add((sup1, slice_name, sup2))
         
         for sup1, slice_name, sup2 in list(cross_flows)[:5]:  # Limit
-            lines.append(f"    {self._safe_id(sup1)} -->|{slice_name}| {self._safe_id(slice_name)}")
-            lines.append(f"    {self._safe_id(slice_name)} --> {self._safe_id(sup2)}")
+            slice_id = f"slice_{self._safe_id(slice_name)}"
+            sup1_id = f"sup_{self._safe_id(sup1)}"
+            sup2_id = f"sup_{self._safe_id(sup2)}"
+            lines.append(f"    {sup1_id} -->|{slice_name}| {slice_id}")
+            lines.append(f"    {slice_id} --> {sup2_id}")
         
         # Styling
         lines.extend([

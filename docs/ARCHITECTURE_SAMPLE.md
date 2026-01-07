@@ -35,14 +35,14 @@ erDiagram
 
 ```mermaid
 flowchart TB
-    subgraph main["🎯 Main Supervisor"]
+    subgraph sup_main["🎯 Main Supervisor"]
         direction LR
         greeter["👋 greeter"]
         helper["💡 helper"]
         analyzer["📊 analyzer"]
     end
     
-    subgraph task_sup["📋 Task Supervisor"]
+    subgraph sup_task["📋 Task Supervisor"]
         direction LR
         planner["📝 planner"]
         executor["⚙️ executor"]
@@ -62,19 +62,19 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph slices["📦 State"]
-        request[("📥 request")]
-        context[("📁 context")]
-        task_slice[("📁 task")]
-        response[("📤 response")]
+        slice_request[("📥 request")]
+        slice_context[("📁 context")]
+        slice_task[("📁 task")]
+        slice_response[("📤 response")]
     end
 
-    subgraph main["🎯 main"]
+    subgraph sup_main["🎯 main"]
         direction LR
         greeter["👋 greeter"]
         helper["💡 helper"]
         analyzer["📊 analyzer"]
     end
-    subgraph task_sup["🎯 task"]
+    subgraph sup_task["🎯 task"]
         direction LR
         planner["📝 planner"]
         executor["⚙️ executor"]
@@ -82,14 +82,14 @@ flowchart TB
     end
 
     %% Entry points
-    request --> greeter
-    request --> helper
-    request --> planner
+    slice_request --> greeter
+    slice_request --> helper
+    slice_request --> planner
     %% Terminal outputs
-    reporter --> response
+    reporter --> slice_response
     %% Cross-supervisor data
-    main -->|context| context
-    context --> task_sup
+    sup_main -->|context| slice_context
+    slice_context --> sup_task
 
     classDef slice fill:#f5f5f5,stroke:#999
     classDef terminal fill:#e94560,stroke:#16213e,color:#fff
