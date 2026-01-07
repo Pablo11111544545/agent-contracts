@@ -99,7 +99,7 @@ class NodeRegistry:
         self,
         supervisor: str,
         state: dict,
-    ) -> list[str]:
+    ) -> list[tuple[int, str]]:
         """Evaluate all node trigger conditions and return matches.
         
         Args:
@@ -107,7 +107,7 @@ class NodeRegistry:
             state: Current State
             
         Returns:
-            Matched node names (ordered by priority)
+            Matched node names (ordered by priority) as (priority, name) tuples
         """
         candidates: list[tuple[int, str]] = []
         
@@ -126,7 +126,7 @@ class NodeRegistry:
         
         # Sort by priority (descending)
         candidates.sort(key=lambda x: x[0], reverse=True)
-        return [name for _, name in candidates]
+        return candidates
     
     def _evaluate_condition(
         self,

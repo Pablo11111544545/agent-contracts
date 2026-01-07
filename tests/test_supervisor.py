@@ -39,7 +39,7 @@ class TestGenericSupervisor:
     async def test_rule_candidate_with_llm(self, mock_registry, mock_llm):
         """Test that rule candidates are passed to LLM for final decision."""
         # Mock evaluate_triggers to return a rule candidate
-        mock_registry.evaluate_triggers.return_value = ["node1"]
+        mock_registry.evaluate_triggers.return_value = [(10, "node1")]
         mock_registry.build_llm_prompt.return_value = "Choose next action"
         
         # Setup LLM to return the rule candidate

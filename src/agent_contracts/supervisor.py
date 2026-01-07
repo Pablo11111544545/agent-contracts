@@ -153,7 +153,10 @@ class GenericSupervisor:
                 )
 
         # Phase 1: Rule-based evaluation
-        rule_candidates = self.registry.evaluate_triggers(self.name, state)
+        matches = self.registry.evaluate_triggers(self.name, state)
+        
+        # Smart selection for LLM context (Top 3 + Ties)
+        rule_candidates = self._select_top_matches(matches)
         
         # Child node suggestion
         internal = state.get("_internal", {})
@@ -180,9 +183,9 @@ class GenericSupervisor:
                 return decision
         
         # Phase 3: Fallback
-        if rule_candidates:
+        if matches:
             return SupervisorDecision(
-                next_node=rule_candidates[0],
+                next_node=matches[0][1],
                 reasoning="Rule-based match (fallback)"
             )
         
@@ -207,6 +210,25 @@ class GenericSupervisor:
         
         return None
     
+    def _select_top_matches(self, matches: list[tuple[int, str]]) -> list[str]:
+        """Select top candidates handling ties (Top 3 + Ties)."""
+        if not matches:
+            return []
+            
+        selected = []
+        limit = 3
+        last_prio = -1
+        
+        for i, (prio, name) in enumerate(matches):
+            if i < limit:
+                selected.append(name)
+                last_prio = prio
+            elif prio == last_prio:
+                selected.append(name)
+            else:
+                break
+        return selected
+    
     async def _decide_with_llm(
         self, 
         state: dict,
@@ -225,7 +247,7 @@ class GenericSupervisor:
 Current action: {request.get('action', 'unknown')}
 User message: {request.get('message', 'None')}
 
-High priority system rules suggest: {rule_candidates[:3]}
+High priority system rules suggest: {rule_candidates}
 Last active node suggested: {child_decision or 'None'}
 """
             full_prompt = f"{prompt}\n\nContext:\n{context}"

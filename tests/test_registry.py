@@ -114,7 +114,8 @@ class TestTriggerPriority:
         
         # Should match with highest priority (100), not first match (10)
         assert len(candidates) == 1
-        assert candidates[0] == "priority_node"
+        assert candidates[0][1] == "priority_node"
+        assert candidates[0][0] == 100
         
         # Verify the priority used is 100 (not 10)
         # We can check this by looking at internal state or by testing ordering
@@ -159,4 +160,6 @@ class TestTriggerPriority:
         candidates = registry.evaluate_triggers("priority_test", state)
         
         # High priority should come first
-        assert candidates == ["high_priority", "low_priority"]
+        assert len(candidates) == 2
+        assert candidates[0][1] == "high_priority"
+        assert candidates[1][1] == "low_priority"
