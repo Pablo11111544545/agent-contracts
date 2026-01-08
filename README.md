@@ -4,6 +4,8 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![CI](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml)
 
+[![Doceumentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://yatarousan0227.github.io/agent-contracts/)
+
 English | [日本語](README.ja.md)
 
 **A modular, contract-driven node architecture for building LangGraph agents.**
@@ -11,6 +13,9 @@ English | [日本語](README.ja.md)
 `agent-contracts` provides a structured way to build AI agents using declarative contracts that define node I/O, dependencies, and routing rules. This enables automatic graph construction, type-safe state management, and flexible LLM-powered routing.
 
 ![Architecture Overview](images/overview.png)
+
+📘 **Full Documentation**: [https://yatarousan0227.github.io/agent-contracts/](https://yatarousan0227.github.io/agent-contracts/)
+
 
 ---
 
