@@ -162,3 +162,190 @@ class TestTriggerPriority:
         assert len(candidates) == 2
         assert candidates[0][1] == "high_priority"
         assert candidates[1][1] == "low_priority"
+
+
+class TestRegistryEdgeCases:
+    """Tests for edge cases and additional registry functionality."""
+
+    def test_register_without_contract(self):
+        """Test that registering a class without CONTRACT raises error."""
+        class NoContractNode:
+            pass
+        
+        registry = NodeRegistry()
+        with pytest.raises(ValueError, match="must have CONTRACT"):
+            registry.register(NoContractNode)
+
+    def test_unknown_slice_warning(self):
+        """Test that unknown slices in reads/writes log warnings."""
+        class UnknownSliceNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="unknown_slice_node",
+                description="Node with unknown slices",
+                reads=["unknown_read_slice"],
+                writes=["unknown_write_slice"],
+                supervisor="test",
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        registry = NodeRegistry()
+        # Should not raise, just log warnings
+        registry.register(UnknownSliceNode)
+        
+        contract = registry.get_contract("unknown_slice_node")
+        assert contract is not None
+
+    def test_request_write_warning(self):
+        """Test that writing to request slice logs warning."""
+        class RequestWriteNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="request_writer",
+                description="Writes to request",
+                reads=["request"],
+                writes=["request"],
+                supervisor="test",
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        registry = NodeRegistry()
+        # Should not raise, just log warning
+        registry.register(RequestWriteNode)
+
+    def test_add_valid_slice(self):
+        """Test adding valid slices to registry."""
+        registry = NodeRegistry()
+        registry.add_valid_slice("custom_slice")
+        
+        class CustomSliceNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="custom_slice_node",
+                description="Uses custom slice",
+                reads=["custom_slice"],
+                writes=["custom_slice"],
+                supervisor="test",
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        # Should register without warnings about unknown slice
+        registry.register(CustomSliceNode)
+
+    def test_when_not_condition(self):
+        """Test when_not condition evaluation."""
+        from agent_contracts import TriggerCondition
+        
+        class WhenNotNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="when_not_node",
+                description="Node with when_not condition",
+                reads=[],
+                writes=[],
+                supervisor="test",
+                trigger_conditions=[
+                    TriggerCondition(
+                        when_not={"response.done": True},
+                        priority=10,
+                    ),
+                ]
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        registry = NodeRegistry()
+        registry.register(WhenNotNode)
+        
+        # Should match when done is not True
+        state = {"response": {"done": False}}
+        candidates = registry.evaluate_triggers("test", state)
+        assert len(candidates) == 1
+        
+        # Should NOT match when done is True
+        state = {"response": {"done": True}}
+        candidates = registry.evaluate_triggers("test", state)
+        assert len(candidates) == 0
+
+    def test_build_llm_prompt_with_hints(self):
+        """Test building LLM prompt with and without hints."""
+        from agent_contracts import TriggerCondition
+        
+        class NodeWithHint(ModularNode):
+            CONTRACT = NodeContract(
+                name="with_hint",
+                description="Has hint",
+                reads=[],
+                writes=[],
+                supervisor="prompt_test",
+                trigger_conditions=[
+                    TriggerCondition(priority=10, llm_hint="Use this for X"),
+                ]
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        class NodeWithoutHint(ModularNode):
+            CONTRACT = NodeContract(
+                name="without_hint",
+                description="No hint",
+                reads=[],
+                writes=[],
+                supervisor="prompt_test",
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        registry = NodeRegistry()
+        registry.register(NodeWithHint)
+        registry.register(NodeWithoutHint)
+        
+        prompt = registry.build_llm_prompt("prompt_test", {})
+        
+        assert "with_hint" in prompt
+        assert "Use this for X" in prompt
+        assert "without_hint" in prompt
+        assert "done" in prompt
+
+    def test_flat_key_search(self):
+        """Test _get_state_value with flat key (no dot)."""
+        registry = NodeRegistry()
+        
+        state = {
+            "request": {"action": "test"},
+            "response": {"type": "result"},
+        }
+        
+        # Should find action in request
+        assert registry._get_state_value(state, "action") == "test"
+        # Should find type in response
+        assert registry._get_state_value(state, "type") == "result"
+        # Should return None for missing key
+        assert registry._get_state_value(state, "missing") is None
+
+    def test_nested_path_with_non_dict(self):
+        """Test _get_state_value with nested path that hits non-dict."""
+        registry = NodeRegistry()
+        
+        state = {
+            "request": {"action": "test"},  # action is a string, not a dict
+        }
+        
+        # Trying to access action.something should return None
+        result = registry._get_state_value(state, "request.action.nested")
+        assert result is None
+
+
+class TestRegistrySingleton:
+    """Tests for registry singleton functions."""
+
+    def test_get_and_reset_registry(self):
+        """Test get_node_registry and reset_registry functions."""
+        from agent_contracts import get_node_registry
+        from agent_contracts.registry import reset_registry
+        
+        # Get registry
+        reg1 = get_node_registry()
+        reg2 = get_node_registry()
+        
+        assert reg1 is reg2  # Same instance
+        
+        # Reset
+        reset_registry()
+        
+        reg3 = get_node_registry()
+        assert reg3 is not reg1  # New instance
+

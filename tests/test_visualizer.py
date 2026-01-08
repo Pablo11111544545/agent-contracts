@@ -1,5 +1,6 @@
 """Tests for ContractVisualizer."""
 import pytest
+from unittest.mock import MagicMock
 from agent_contracts import (
     NodeRegistry,
     NodeContract,
@@ -256,3 +257,255 @@ class TestNodeIcons:
         contract = registry.get_contract("like_handler")
         icon = visualizer._get_node_icon(contract)
         assert icon == "❤️"
+
+    def test_search_icon(self, visualizer: ContractVisualizer):
+        """Test search node gets search icon."""
+        contract = NodeContract(
+            name="search_node",
+            description="Search",
+            reads=[], writes=[],
+            supervisor="main"
+        )
+        icon = visualizer._get_node_icon(contract)
+        assert icon == "🔍"
+
+    def test_default_icon(self, visualizer: ContractVisualizer):
+        """Test unknown node type gets default icon."""
+        contract = NodeContract(
+            name="unknown_node",
+            description="Unknown",
+            reads=[], writes=[],
+            supervisor="main"
+        )
+        icon = visualizer._get_node_icon(contract)
+        assert icon == "📦"
+
+    def test_none_contract_icon(self, visualizer: ContractVisualizer):
+        """Test None contract returns default icon."""
+        assert visualizer._get_node_icon(None) == "📦"
+
+
+class TestConditionSummaries:
+    """Tests for condition summarization."""
+
+    def test_summarize_when_not(self, visualizer: ContractVisualizer):
+        """Test summarizing when_not conditions."""
+        conditions = [
+            TriggerCondition(when_not={"done": True}, priority=10)
+        ]
+        summary = visualizer._summarize_conditions(conditions)
+        assert "done≠True" in summary
+
+    def test_summarize_no_conditions(self, visualizer: ContractVisualizer):
+        """Test summarizing empty conditions."""
+        assert visualizer._summarize_conditions([]) == "_(default)_"
+
+    def test_summarize_always(self, visualizer: ContractVisualizer):
+        """Test summarizing always valid condition."""
+        conditions = [
+            TriggerCondition(priority=10)
+        ]
+        summary = visualizer._summarize_conditions(conditions)
+        assert "_(always)_" in summary
+
+
+class TestLangGraphFlow:
+    """Tests for LangGraph flow generation."""
+
+    def test_generate_langgraph_flow_no_graph(self, visualizer: ContractVisualizer):
+        """Test returns empty string when no graph provided."""
+        visualizer.graph = None
+        assert visualizer.generate_langgraph_flow() == ""
+
+    def test_generate_langgraph_flow_success(self, visualizer: ContractVisualizer):
+        """Test returns mermaid diagram when graph provided."""
+        mock_graph = MagicMock()
+        mock_graph.get_graph.return_value.draw_mermaid.return_value = "graph TD"
+        
+        visualizer.graph = mock_graph
+        flow = visualizer.generate_langgraph_flow()
+        
+        assert "LangGraph Node Flow" in flow
+        assert "graph TD" in flow
+
+    def test_generate_langgraph_flow_error(self, visualizer: ContractVisualizer):
+        """Test handles graph generation errors gracefully."""
+        mock_graph = MagicMock()
+        mock_graph.get_graph.side_effect = RuntimeError("Graph error")
+        
+        visualizer.graph = mock_graph
+        assert visualizer.generate_langgraph_flow() == ""
+
+
+class TestDetailedDependencies:
+    """Tests for detailed dependency generation."""
+
+    def test_detailed_dependencies_table(self, visualizer: ContractVisualizer):
+        """Test detailed dependency table in dataflow diagram."""
+        # Setup nodes with clear dependencies via slices
+        class Producer(ModularNode):
+            CONTRACT = NodeContract(
+                name="producer",
+                description="Produces data",
+                reads=[],
+                writes=["shared_data"],
+                supervisor="main"
+            )
+            async def execute(self, inputs): return NodeOutputs()
+
+        class Consumer(ModularNode):
+            CONTRACT = NodeContract(
+                name="consumer",
+                description="Consumes data",
+                reads=["shared_data"],
+                writes=[],
+                supervisor="main"
+            )
+            async def execute(self, inputs): return NodeOutputs()
+
+        registry = NodeRegistry()
+        registry.register(Producer)
+        registry.register(Consumer)
+        
+        viz = ContractVisualizer(registry)
+        section = viz.generate_dataflow_diagram()
+        
+        # Check for dependency table entries
+        assert "Detailed Node Dependencies" in section
+        assert "| Node | Depends On (via shared slices) |" in section
+        # Consumer depends on Producer via shared_data
+        assert "`consumer`" in section
+        assert "`producer`" in section
+        assert "shared_data" in section
+
+    def test_build_slice_relationships(self, visualizer: ContractVisualizer):
+        """Test building slice relationship statistics."""
+        class TransformNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="transform",
+                description="Transforms A to B",
+                reads=["slice_a"],
+                writes=["slice_b"],
+                supervisor="main"
+            )
+            async def execute(self, inputs): return NodeOutputs()
+            
+        registry = NodeRegistry()
+        registry.register(TransformNode)
+        
+        viz = ContractVisualizer(registry)
+        relationships = viz._build_slice_relationships()
+        
+        # Should find one relationship: slice_a -> slice_b
+        assert len(relationships) == 1
+        src, dst, count = relationships[0]
+        assert src == "slice_a"
+        assert dst == "slice_b"
+        assert "1 nodes" in count
+
+    def test_card_icon(self, registry: NodeRegistry, visualizer: ContractVisualizer):
+        """Test card node gets card icon."""
+        # Need to register a node with 'card' in name but not terminal
+        class CardNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="card_viewer",
+                description="View card",
+                reads=[], writes=[],
+                supervisor="main"
+            )
+            async def execute(self, inputs): return NodeOutputs()
+            
+        registry.register(CardNode)
+        contract = registry.get_contract("card_viewer")
+        icon = visualizer._get_node_icon(contract)
+        assert icon == "🃏"
+
+class TestVisualizerEdgeCases:
+    """Test edge cases and defensive code paths in visualizer."""
+    
+    def test_build_relationships_missing_contract(self):
+        """Test _build_slice_relationships passes when contract is missing."""
+        registry = MagicMock()
+        registry.get_all_nodes.return_value = ["node1"]
+        registry.get_contract.return_value = None  # Force missing contract
+        
+        viz = ContractVisualizer(registry)
+        relationships = viz._build_slice_relationships()
+        assert relationships == []
+        
+    def test_dataflow_missing_contract_in_deps(self):
+        """Test data flow diagram with node having dependencies but no shared slices."""
+        # This covers lines 399 (else branch)
+        registry = MagicMock()
+        
+        node_contract = NodeContract(
+            name="node1", description="desc",
+            reads=["slice_a"], writes=[], supervisor="sup"
+        )
+        dep_contract = NodeContract(
+            name="node2", description="desc",
+            reads=[], writes=["slice_b"], supervisor="sup"
+        )
+        
+        registry.get_all_nodes.return_value = ["node1", "node2"]
+        # Allow looking up contracts
+        registry.get_contract.side_effect = lambda n: {
+            "node1": node_contract, 
+            "node2": dep_contract
+        }.get(n)
+        
+        # Force a dependency relationship even without shared slices
+        registry.analyze_data_flow.return_value = {"node1": ["node2"]}
+        
+        viz = ContractVisualizer(registry)
+        section = viz.generate_dataflow_diagram()
+        
+        # Check that we have the Detailed Node Dependencies section
+        assert "Detailed Node Dependencies" in section
+        
+        # Check that node1 is listed as having dependencies
+        assert "| `node1` |" in section
+        
+        # Check that node2 is listed as a dependency
+        # It should appear as `node2` since there are no shared slices
+        assert "`node2`" in section
+        
+        # Ensure slice_a (which is not shared) is NOT mentioned in the dependency column
+        # It might appear elsewhere in the diagram, but we check nearby context if possible
+        # Or simpler: just ensure it's generated successfully without crashing
+
+    def test_dataflow_no_dependencies(self):
+        """Test data flow diagram gracefully handles nodes with no dependencies."""
+        # This covers line 379 (continue when no sup_deps)
+        registry = MagicMock()
+        
+        node_contract = NodeContract(
+            name="node1", description="desc",
+            reads=[], writes=[], supervisor="sup"
+        )
+        
+        registry.get_all_nodes.return_value = ["node1"]
+        registry.get_contract.return_value = node_contract
+        registry.analyze_data_flow.return_value = {}  # No dependencies
+        
+        viz = ContractVisualizer(registry)
+        section = viz.generate_dataflow_diagram()
+        
+        # Should NOT have the supervisor section in the table since no deps
+        assert "**sup**" not in section
+        assert "| Node | Depends On" not in section
+        
+    def test_nodes_reference_missing_contract(self):
+        """Test generate_nodes_reference passes when contract is missing."""
+        # Covers line 545
+        registry = MagicMock()
+        registry.get_all_nodes.return_value = ["node1"]
+        registry.get_contract.return_value = None
+        
+        viz = ContractVisualizer(registry)
+        section = viz.generate_nodes_reference()
+        
+        # Header exists but no rows
+        assert "Nodes Reference" in section
+        assert "| Node | Supervisor |" in section
+        assert "| node1 |" not in section

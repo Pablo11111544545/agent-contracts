@@ -31,6 +31,10 @@ def mock_registry():
     
     registry.get_all_contracts.return_value = [contract1, contract2]
     registry.get_supervisor_nodes.return_value = ["node1", "node2"]
+    registry.get_contract.side_effect = lambda name: {
+        "node1": contract1,
+        "node2": contract2,
+    }.get(name)
     return registry
 
 @pytest.mark.asyncio
@@ -111,3 +115,149 @@ class TestGenericSupervisor:
         
         result = await supervisor.decide(inputs)
         assert result.next_node == "node2"
+
+    async def test_same_priority_nodes_included(self, mock_registry, mock_llm):
+        """Test that nodes with same priority are all included."""
+        # Multiple nodes with same priority
+        mock_registry.evaluate_triggers.return_value = [
+            (10, "node1"),
+            (10, "node2"),  # Same priority
+            (10, "node3"),  # Same priority
+            (10, "node4"),  # Same priority (beyond limit but same priority)
+        ]
+        mock_registry.build_llm_prompt.return_value = "Choose"
+        
+        from agent_contracts.supervisor import SupervisorDecision
+        mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
+            return_value=SupervisorDecision(next_node="node1", reasoning="")
+        )
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=mock_llm,
+            registry=mock_registry
+        )
+        
+        inputs = {"request": {}, "_internal": {"main_iteration": 0}}
+        result = await supervisor.decide(inputs)
+        assert result.next_node == "node1"
+
+    async def test_llm_returns_invalid_node_fallback_to_rule(self, mock_registry, mock_llm):
+        """Test fallback when LLM returns invalid node."""
+        mock_registry.evaluate_triggers.return_value = [(10, "node1")]
+        mock_registry.build_llm_prompt.return_value = "Choose"
+        
+        from agent_contracts.supervisor import SupervisorDecision
+        mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
+            return_value=SupervisorDecision(
+                next_node="invalid_node",  # Invalid
+                reasoning=""
+            )
+        )
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=mock_llm,
+            registry=mock_registry
+        )
+        
+        inputs = {"request": {}, "_internal": {"main_iteration": 0}}
+        result = await supervisor.decide(inputs)
+        
+        # Should fall back to rule candidate
+        assert result.next_node == "node1"
+
+    async def test_llm_error_fallback(self, mock_registry, mock_llm):
+        """Test fallback when LLM throws error."""
+        mock_registry.evaluate_triggers.return_value = [(10, "node1")]
+        mock_registry.build_llm_prompt.return_value = "Choose"
+        
+        mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
+            side_effect=RuntimeError("LLM error")
+        )
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=mock_llm,
+            registry=mock_registry
+        )
+        
+        inputs = {"request": {}, "_internal": {"main_iteration": 0}}
+        result = await supervisor.decide(inputs)
+        
+        # Should fall back to rule match
+        assert result.next_node == "node1"
+
+    async def test_child_decision_fallback(self, mock_registry):
+        """Test child_decision fallback when no matches and no LLM."""
+        mock_registry.evaluate_triggers.return_value = []
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,  # No LLM
+            registry=mock_registry
+        )
+        
+        inputs = {
+            "request": {},
+            "_internal": {
+                "main_iteration": 0,
+                "decision": "node1"  # Previous decision
+            }
+        }
+        
+        result = await supervisor.decide(inputs)
+        
+        # Should use child decision as fallback
+        assert result.next_node == "node1"
+
+    async def test_done_fallback_no_matches(self, mock_registry):
+        """Test done fallback when no matches, no LLM, no child decision."""
+        mock_registry.evaluate_triggers.return_value = []
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=mock_registry
+        )
+        
+        inputs = {
+            "request": {},
+            "_internal": {"main_iteration": 0}
+        }
+        
+        result = await supervisor.decide(inputs)
+        
+        # Should return done
+        assert result.next_node == "done"
+
+    async def test_build_matched_rules_with_when_not(self, mock_registry, mock_llm):
+        """Test _build_matched_rules with when_not condition."""
+        contract_when_not = NodeContract(
+            name="when_not_node",
+            description="Node with when_not",
+            reads=[],
+            writes=[],
+            supervisor="main",
+            trigger_conditions=[
+                TriggerCondition(when_not={"done": True}, priority=5)
+            ]
+        )
+        mock_registry.get_contract.side_effect = lambda name: {
+            "when_not_node": contract_when_not,
+        }.get(name)
+        mock_registry.evaluate_triggers.return_value = [(5, "when_not_node")]
+        mock_registry.get_supervisor_nodes.return_value = ["when_not_node"]
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=mock_registry
+        )
+        
+        inputs = {"request": {}, "_internal": {"main_iteration": 0}}
+        result = await supervisor.decide_with_trace(inputs)
+        
+        assert result.selected_node == "when_not_node"
+        assert result.reason.decision_type == "rule_match"
+

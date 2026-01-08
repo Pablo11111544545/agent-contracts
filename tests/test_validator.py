@@ -274,3 +274,70 @@ class TestContractValidator:
         
         assert "request" in readers
         assert set(readers["request"]) == {"valid_node", "another_valid_node"}
+
+    def test_all_pass_message(self):
+        """Test validation result str when all validations pass."""
+        result = ValidationResult()
+        output = str(result)
+        assert "All validations passed" in output
+
+    def test_get_unused_slices_write_only(self):
+        """get_unused_slices detects write-only slices."""
+        class WriteOnlyNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="write_only_node",
+                description="Writes to custom slice",
+                reads=["request"],
+                writes=["custom_output"],
+                supervisor="main",
+                trigger_conditions=[TriggerCondition(priority=10)],
+            )
+            async def execute(self, inputs, config=None): 
+                return NodeOutputs()
+        
+        registry = NodeRegistry()
+        registry.add_valid_slice("custom_output")
+        registry.register(WriteOnlyNode)
+        
+        validator = ContractValidator(registry)
+        unused = validator.get_unused_slices()
+        
+        assert "custom_output" in unused
+        assert unused["custom_output"] == "write_only"
+
+    def test_get_unused_slices_read_only(self):
+        """get_unused_slices detects read-only slices (non-request)."""
+        class ReadOnlyNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="read_only_node",
+                description="Reads from custom slice",
+                reads=["custom_input"],
+                writes=["response"],
+                supervisor="main",
+                trigger_conditions=[TriggerCondition(priority=10)],
+            )
+            async def execute(self, inputs, config=None): 
+                return NodeOutputs()
+        
+        registry = NodeRegistry()
+        registry.add_valid_slice("custom_input")
+        registry.register(ReadOnlyNode)
+        
+        validator = ContractValidator(registry)
+        unused = validator.get_unused_slices()
+        
+        # custom_input is read but never written
+        assert "custom_input" in unused
+        assert unused["custom_input"] == "read_only"
+
+    def test_get_unused_slices_request_not_flagged(self):
+        """get_unused_slices doesn't flag 'request' as read-only."""
+        registry = NodeRegistry()
+        registry.register(ValidNode)  # Reads from request, writes to response
+        
+        validator = ContractValidator(registry)
+        unused = validator.get_unused_slices()
+        
+        # request should NOT be flagged as read_only (it's an input slice)
+        assert "request" not in unused
+

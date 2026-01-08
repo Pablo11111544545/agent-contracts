@@ -274,3 +274,156 @@ class TestHelperFunctions:
         assert event.type == StreamEventType.DATA
         assert event.data == {"results": [1, 2, 3]}
         assert event.message == "Results ready"
+
+
+class TestStreamingRuntimeSessionRestore:
+    """Tests for session restoration in StreamingRuntime."""
+
+    @pytest.mark.asyncio
+    async def test_stream_with_session_restore(self):
+        """Streaming restores session data when resume_session is True."""
+        node = AsyncMock(return_value=None)
+        
+        # Mock session store
+        class MockSessionStore:
+            async def load(self, session_id):
+                return {"shopping": {"search_count": 5}}
+            
+            async def save(self, session_id, data, ttl=3600):
+                pass
+        
+        runtime = StreamingRuntime(
+            nodes=[NodeExecutor("node", node)],
+            session_store=MockSessionStore(),
+            slices_to_restore=["shopping"],
+        )
+        
+        events = []
+        async for event in runtime.stream(RequestContext(
+            session_id="abc",
+            action="test",
+            resume_session=True,
+        )):
+            events.append(event)
+        
+        # Node should have been called with restored session data
+        call_args = node.call_args[0][0]
+        assert call_args.get("shopping", {}).get("search_count") == 5
+
+    @pytest.mark.asyncio
+    async def test_stream_without_session_data(self):
+        """Streaming handles missing session data gracefully."""
+        node = AsyncMock(return_value=None)
+        
+        class MockSessionStore:
+            async def load(self, session_id):
+                return None
+        
+        runtime = StreamingRuntime(
+            nodes=[NodeExecutor("node", node)],
+            session_store=MockSessionStore(),
+        )
+        
+        events = []
+        async for event in runtime.stream(RequestContext(
+            session_id="abc",
+            action="test",
+            resume_session=True,
+        )):
+            events.append(event)
+        
+        # Should complete without error
+        assert events[-1].type == StreamEventType.DONE
+
+
+class TestStreamingRuntimeWithGraph:
+    """Tests for stream_with_graph method."""
+
+    @pytest.mark.asyncio
+    async def test_stream_with_graph_updates_mode(self):
+        """stream_with_graph works with updates mode."""
+        runtime = StreamingRuntime()
+        
+        # Mock graph with astream
+        class MockGraph:
+            async def astream(self, state, stream_mode="updates"):
+                yield {"node1": {"response": {"type": "test"}}}
+                yield {"node2": {"data": "value"}}
+        
+        events = []
+        async for event in runtime.stream_with_graph(
+            RequestContext(session_id="abc", action="test"),
+            graph=MockGraph(),
+            stream_mode="updates",
+        ):
+            events.append(event)
+        
+        assert len(events) >= 2  # At least 2 node events + done
+        assert events[-1].type == StreamEventType.DONE
+
+    @pytest.mark.asyncio
+    async def test_stream_with_graph_values_mode(self):
+        """stream_with_graph works with values mode."""
+        runtime = StreamingRuntime()
+        
+        class MockGraph:
+            async def astream(self, state, stream_mode="values"):
+                yield {"response": {"response_type": "interview"}}
+        
+        events = []
+        async for event in runtime.stream_with_graph(
+            RequestContext(session_id="abc", action="test"),
+            graph=MockGraph(),
+            stream_mode="values",
+        ):
+            events.append(event)
+        
+        assert len(events) >= 1
+        assert events[-1].type == StreamEventType.DONE
+
+    @pytest.mark.asyncio
+    async def test_stream_with_graph_error_handling(self):
+        """stream_with_graph handles errors gracefully."""
+        runtime = StreamingRuntime()
+        
+        class FailingGraph:
+            async def astream(self, state, stream_mode="updates"):
+                raise RuntimeError("Graph failed")
+                yield  # Make it a generator
+        
+        events = []
+        async for event in runtime.stream_with_graph(
+            RequestContext(session_id="abc", action="test"),
+            graph=FailingGraph(),
+        ):
+            events.append(event)
+        
+        assert events[-1].type == StreamEventType.ERROR
+        assert "Graph failed" in events[-1].message
+
+    @pytest.mark.asyncio
+    async def test_stream_with_graph_session_restore(self):
+        """stream_with_graph restores session data."""
+        class MockSessionStore:
+            async def load(self, session_id):
+                return {"shopping": {"restored": True}}
+        
+        class MockGraph:
+            async def astream(self, state, stream_mode="updates"):
+                # Return the state to verify restoration
+                yield {"result": {"state": state}}
+        
+        runtime = StreamingRuntime(
+            session_store=MockSessionStore(),
+            slices_to_restore=["shopping"],
+        )
+        
+        events = []
+        async for event in runtime.stream_with_graph(
+            RequestContext(session_id="abc", action="test", resume_session=True),
+            graph=MockGraph(),
+        ):
+            events.append(event)
+        
+        assert events[-1].type == StreamEventType.DONE
+
