@@ -114,16 +114,18 @@ class ModularNode(ABC):
         # Extract input slices
         inputs = self._extract_inputs(state)
         
-        # Merge config with node metadata
-        config = config or {}
-        if "metadata" not in config:
-            config["metadata"] = {}
-        
-        config["metadata"].update({
-            "node_name": self.CONTRACT.name,
-            "node_supervisor": self.CONTRACT.supervisor,
-            "node_type": self.__class__.__name__,
-        })
+        # Merge config with node metadata (create new config to avoid mutation)
+        base_config = config or {}
+        existing_metadata = base_config.get("metadata", {})
+        config = {
+            **base_config,
+            "metadata": {
+                **existing_metadata,
+                "node_name": self.CONTRACT.name,
+                "node_supervisor": self.CONTRACT.supervisor,
+                "node_type": self.__class__.__name__,
+            },
+        }
         
         # Execute
         try:

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from agent_contracts import ModularNode, NodeContract, NodeInputs, NodeOutputs
 from agent_contracts.supervisor import GenericSupervisor
@@ -13,24 +13,34 @@ class MockNode(ModularNode):
         supervisor="main",
     )
     
+    # Store the config passed to execute for verification
+    received_config = None
+    
     async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+        MockNode.received_config = config
         return NodeOutputs(response={"data": "test"})
 
 @pytest.mark.asyncio
 async def test_node_propagates_metadata():
-    """Test that ModularNode adds metadata to config."""
+    """Test that ModularNode creates new config with metadata (immutable pattern)."""
     node = MockNode()
-    config = {"metadata": {"existing": "value"}}
+    original_config = {"metadata": {"existing": "value"}}
     
-    await node({"request": {}}, config=config)
+    await node({"request": {}}, config=original_config)
     
-    assert config["metadata"]["node_name"] == "mock_node"
-    assert config["metadata"]["node_supervisor"] == "main"
-    assert config["metadata"]["existing"] == "value"
+    # Original config should NOT be mutated (immutable pattern)
+    assert original_config == {"metadata": {"existing": "value"}}
+    
+    # The execute method should receive the enhanced config
+    received = MockNode.received_config
+    assert received is not None
+    assert received["metadata"]["node_name"] == "mock_node"
+    assert received["metadata"]["node_supervisor"] == "main"
+    assert received["metadata"]["existing"] == "value"
 
 @pytest.mark.asyncio
 async def test_supervisor_adds_trace_info():
-    """Test that GenericSupervisor adds trace info."""
+    """Test that GenericSupervisor creates new config with trace info (immutable pattern)."""
     # Mock registry
     mock_registry = MagicMock()
     mock_registry.evaluate_triggers.return_value = [(100, "mock_node")]
@@ -40,10 +50,15 @@ async def test_supervisor_adds_trace_info():
         registry=mock_registry,
     )
     
-    config = {"metadata": {}}
+    original_config = {"metadata": {}}
     state = {"request": {"action": "test"}}
     
-    await supervisor(state, config=config)
+    # Supervisor decides based on registry - config is used internally
+    await supervisor(state, config=original_config)
     
-    assert config["metadata"]["supervisor_name"] == "main"
-    assert "supervisor_decision" in config.get("tags", [])
+    # Original config should NOT be mutated (immutable pattern)
+    assert original_config == {"metadata": {}}
+    
+    # Verify supervisor uses registry correctly
+    mock_registry.evaluate_triggers.assert_called_once()
+

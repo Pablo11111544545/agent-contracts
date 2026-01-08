@@ -15,6 +15,7 @@ from langchain_core.runnables import RunnableConfig
 from agent_contracts.registry import NodeRegistry, get_node_registry
 from agent_contracts.config import get_config
 from agent_contracts.utils.logging import get_logger
+from agent_contracts.routing import MatchedRule, RoutingReason, RoutingDecision
 
 logger = get_logger("agent_contracts.supervisor")
 
@@ -112,90 +113,13 @@ class GenericSupervisor:
     ) -> SupervisorDecision:
         """Determine next node.
         
-        1. Immediate exit check (response_type check)
-        2. Rule-based evaluation (collect candidates)
-        3. LLM decision (final decision)
-           If no LLM, use top rule-based candidate
+        This is a convenience wrapper around decide_with_trace() that returns
+        a simplified SupervisorDecision instead of the full RoutingDecision.
+        
+        For debugging and detailed routing information, use decide_with_trace().
         """
-        # Enhance trace config
-        config = config or {}
-        if "metadata" not in config:
-            config["metadata"] = {}
-            
-        config["metadata"].update({
-            "supervisor_name": self.name,
-            "supervisor_iteration": state.get("_internal", {}).get(f"{self.name}_iteration", 0),
-        })
-        
-        # Phase 0: Immediate exit check
-        immediate = self._check_immediate_rules(state)
-        if immediate:
-            return SupervisorDecision(next_node=immediate, reasoning="Immediate rule")
-        
-        # Phase 0.5: Explicit Routing (Return to Sender)
-        req = state.get("request", {})
-        action = req.get("action") if isinstance(req, dict) else None
-        
-        if action == "answer":
-            interview = state.get("interview", {})
-            lq = interview.get("last_question") if isinstance(interview, dict) else None
-            node_id = None
-            if lq:
-                if isinstance(lq, dict):
-                    node_id = lq.get("node_id")
-                else:
-                    node_id = getattr(lq, "node_id", None)
-            
-            if node_id:
-                return SupervisorDecision(
-                    next_node=node_id,
-                    reasoning=f"Explicit routing to question owner: {node_id}"
-                )
-
-        # Phase 1: Rule-based evaluation
-        matches = self.registry.evaluate_triggers(self.name, state)
-        
-        # Smart selection for LLM context (Top 3 + Ties)
-        rule_candidates = self._select_top_matches(matches)
-        
-        # Child node suggestion
-        internal = state.get("_internal", {})
-        previous_decision = internal.get("decision")
-        
-        child_decision = None
-        if previous_decision and previous_decision != "done":
-            child_decision = previous_decision
-        
-        # Add evaluation context to trace
-        if "tags" not in config:
-            config["tags"] = []
-        config["tags"].append("supervisor_decision")
-        
-        # Phase 2: LLM decision
-        if self.llm:
-            decision = await self._decide_with_llm(
-                state,
-                rule_candidates,
-                child_decision,
-                config=config,
-            )
-            if decision:
-                return decision
-        
-        # Phase 3: Fallback
-        if matches:
-            return SupervisorDecision(
-                next_node=matches[0][1],
-                reasoning="Rule-based match (fallback)"
-            )
-        
-        if child_decision:
-            return SupervisorDecision(
-                next_node=child_decision,
-                reasoning="Child node suggestion (fallback)"
-            )
-            
-        return SupervisorDecision(next_node="done", reasoning="No matching rule, defaulting to done")
+        routing_decision = await self.decide_with_trace(state, config)
+        return routing_decision.to_supervisor_decision()
     
     def _check_immediate_rules(self, state: dict) -> str | None:
         """Check if should exit immediately.
@@ -284,6 +208,154 @@ Last active node suggested: {child_decision or 'None'}
         except Exception as e:
             self.logger.error(f"LLM decision failed: {e}")
             return None
+    
+    def _build_matched_rules(
+        self,
+        matches: list[tuple[int, str]],
+    ) -> list[MatchedRule]:
+        """Build MatchedRule list from trigger matches."""
+        matched_rules = []
+        
+        for priority, node_name in matches:
+            contract = self.registry.get_contract(node_name)
+            if not contract:
+                continue
+            
+            # Find the matching condition description
+            condition_str = ""
+            for condition in contract.trigger_conditions:
+                if condition.priority == priority:
+                    if condition.when:
+                        parts = [f"{k}={v}" for k, v in condition.when.items()]
+                        condition_str = " AND ".join(parts)
+                    elif condition.when_not:
+                        parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
+                        condition_str = " AND ".join(parts)
+                    else:
+                        condition_str = "(always)"
+                    break
+            
+            matched_rules.append(MatchedRule(
+                node=node_name,
+                condition=condition_str or "(unknown)",
+                priority=priority,
+            ))
+        
+        return matched_rules
+    
+    async def decide_with_trace(
+        self,
+        state: dict,
+        config: Optional[RunnableConfig] = None,
+    ) -> RoutingDecision:
+        """Determine next node with full traceability.
+        
+        Returns RoutingDecision with detailed reasoning.
+        Use this for debugging and explainability.
+        
+        Example:
+            decision = await supervisor.decide_with_trace(state)
+            print(f"Selected: {decision.selected_node}")
+            print(f"Type: {decision.reason.decision_type}")
+            for rule in decision.reason.matched_rules:
+                print(f"  - {rule.node} (P{rule.priority}): {rule.condition}")
+        """
+        # Enhance trace config (create new config to avoid mutation)
+        base_config = config or {}
+        existing_metadata = base_config.get("metadata", {})
+        existing_tags = base_config.get("tags", [])
+        config = {
+            **base_config,
+            "metadata": {
+                **existing_metadata,
+                "supervisor_name": self.name,
+                "supervisor_iteration": state.get("_internal", {}).get(f"{self.name}_iteration", 0),
+            },
+            "tags": [*existing_tags, "supervisor_decision"],
+        }
+        
+        # Phase 0: Immediate exit check (terminal state)
+        immediate = self._check_immediate_rules(state)
+        if immediate:
+            return RoutingDecision(
+                selected_node=immediate,
+                reason=RoutingReason(decision_type="terminal_state")
+            )
+        
+        # Phase 0.5: Explicit Routing (Return to Sender)
+        req = state.get("request", {})
+        action = req.get("action") if isinstance(req, dict) else None
+        
+        if action == "answer":
+            interview = state.get("interview", {})
+            lq = interview.get("last_question") if isinstance(interview, dict) else None
+            node_id = None
+            if lq:
+                if isinstance(lq, dict):
+                    node_id = lq.get("node_id")
+                else:
+                    node_id = getattr(lq, "node_id", None)
+            
+            if node_id:
+                return RoutingDecision(
+                    selected_node=node_id,
+                    reason=RoutingReason(decision_type="explicit_routing")
+                )
+
+        # Phase 1: Rule-based evaluation
+        matches = self.registry.evaluate_triggers(self.name, state)
+        matched_rules = self._build_matched_rules(matches)
+        
+        # Smart selection for LLM context (Top 3 + Ties)
+        rule_candidates = self._select_top_matches(matches)
+        
+        # Child node suggestion
+        internal = state.get("_internal", {})
+        previous_decision = internal.get("decision")
+        
+        child_decision = None
+        if previous_decision and previous_decision != "done":
+            child_decision = previous_decision
+        
+        # Phase 2: LLM decision
+        if self.llm:
+            llm_result = await self._decide_with_llm(
+                state,
+                rule_candidates,
+                child_decision,
+                config=config,
+            )
+            if llm_result:
+                return RoutingDecision(
+                    selected_node=llm_result.next_node,
+                    reason=RoutingReason(
+                        decision_type="llm_decision",
+                        matched_rules=matched_rules,
+                        llm_used=True,
+                        llm_reasoning=llm_result.reasoning,
+                    )
+                )
+        
+        # Phase 3: Fallback
+        if matches:
+            return RoutingDecision(
+                selected_node=matches[0][1],
+                reason=RoutingReason(
+                    decision_type="rule_match",
+                    matched_rules=matched_rules,
+                )
+            )
+        
+        if child_decision:
+            return RoutingDecision(
+                selected_node=child_decision,
+                reason=RoutingReason(decision_type="fallback")
+            )
+            
+        return RoutingDecision(
+            selected_node="done",
+            reason=RoutingReason(decision_type="fallback")
+        )
     
     async def __call__(
         self,

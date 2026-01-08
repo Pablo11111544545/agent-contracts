@@ -29,6 +29,11 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
       
+      - name: Run examples
+        run: |
+          python examples/01_contract_validation.py
+          python examples/02_routing_explain.py
+      
       - name: Run linting (optional)
         run: |
           pip install ruff

@@ -21,6 +21,8 @@ English | [日本語](README.ja.md)
 - **🧠 LLM-Driven Supervisor**: LLM makes routing decisions with rule-based hints and fallbacks
 - **💬 Interactive Nodes**: Built-in base class for conversational agents with interview patterns
 - **📊 Typed State Management**: Pydantic-based state slices with validation
+- **🔒 StateAccessor Pattern**: Type-safe, immutable state access with IDE autocompletion
+- **🔄 Runtime Layer**: Unified execution engine with hooks, session management, and streaming
 - **⚙️ YAML Configuration**: Externalize settings with Pydantic validation
 - **🏗️ Architecture Visualization**: Generate comprehensive architecture docs from contracts
 
@@ -345,17 +347,155 @@ See [ARCHITECTURE_SAMPLE.md](docs/ARCHITECTURE_SAMPLE.md) for example output.
 | `BaseAgentState` | Base state class with slices |
 | `ContractVisualizer` | Architecture document generator |
 
-### State Management
+### Runtime Layer
+
+| Export | Description |
+|--------|-------------|
+| `AgentRuntime` | Unified execution engine with lifecycle hooks |
+| `StreamingRuntime` | Node-by-node streaming for SSE |
+| `RequestContext` | Execution request container |
+| `ExecutionResult` | Execution result with response |
+| `RuntimeHooks` | Protocol for customization hooks |
+| `SessionStore` | Protocol for session persistence |
+| `InMemorySessionStore` | In-memory session store for dev/testing |
+
+### StateAccessor Pattern
+
+Type-safe, immutable state access:
 
 ```python
 from agent_contracts import (
-    BaseAgentState,
-    BaseRequestSlice,
-    BaseResponseSlice,
-    get_slice,
-    merge_slice_updates,
+    StateAccessor,
+    Internal,
+    Request,
+    Response,
+    reset_response,
+    increment_turn,
 )
+
+# Read state
+count = Internal.turn_count.get(state)
+
+# Write state (immutable - returns new state)
+state = Internal.turn_count.set(state, 5)
+state = reset_response(state)
 ```
+
+### State Operations
+
+```python
+from agent_contracts.runtime import (
+    create_base_state,
+    merge_session,
+    reset_internal_flags,
+    ensure_slices,
+    update_slice,
+    get_nested,
+)
+
+# Create initial state
+state = create_base_state(session_id="abc", action="answer")
+
+# Merge session data
+state = merge_session(state, session_data, ["interview", "shopping"])
+
+# Update slice
+state = update_slice(state, "interview", question_count=5)
+```
+
+---
+
+## 🔄 Runtime Layer
+
+For production applications, use the Runtime Layer for unified execution:
+
+### AgentRuntime
+
+```python
+from agent_contracts import AgentRuntime, RequestContext, InMemorySessionStore
+
+runtime = AgentRuntime(
+    graph=compiled_graph,
+    session_store=InMemorySessionStore(),
+)
+
+result = await runtime.execute(RequestContext(
+    session_id="abc123",
+    action="answer",
+    message="I like casual style",
+    resume_session=True,
+))
+
+print(result.response_type)  # "interview", "proposals", etc.
+print(result.response_data)  # Response payload
+```
+
+### StreamingRuntime (SSE)
+
+```python
+from agent_contracts.runtime import StreamingRuntime, NodeExecutor
+
+runtime = (
+    StreamingRuntime()
+    .add_node("search", search_node, "Searching...")
+    .add_node("stylist", stylist_node, "Generating recommendations...")
+)
+
+async for event in runtime.stream(request):
+    yield event.to_sse()
+```
+
+### Custom Hooks & Session Store
+
+Implement protocols for your application:
+
+```python
+from agent_contracts import RuntimeHooks, SessionStore
+
+class MySessionStore(SessionStore):
+    async def load(self, session_id: str) -> dict | None:
+        return await self.redis.get(session_id)
+    
+    async def save(self, session_id: str, data: dict, ttl: int = 3600):
+        await self.redis.setex(session_id, ttl, data)
+    
+    async def delete(self, session_id: str):
+        await self.redis.delete(session_id)
+
+class MyHooks(RuntimeHooks):
+    async def prepare_state(self, state, request):
+        # Normalize state before execution
+        return state
+    
+    async def after_execution(self, state, result):
+        # Persist session, log, etc.
+        pass
+```
+
+## 📖 Examples
+
+| Example | Description |
+|---------|-------------|
+| [01_contract_validation.py](examples/01_contract_validation.py) | Static contract validation demo |
+| [02_routing_explain.py](examples/02_routing_explain.py) | Traceable routing decisions demo |
+
+Run examples:
+
+```bash
+python examples/01_contract_validation.py
+python examples/02_routing_explain.py
+```
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/getting_started.md) | First steps with agent-contracts |
+| [Core Concepts](docs/core_concepts.md) | Deep dive into the architecture |
+| [Best Practices](docs/best_practices.md) | Design patterns and tips |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
 
 ---
 
