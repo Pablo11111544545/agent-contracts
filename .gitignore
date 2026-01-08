@@ -36,3 +36,6 @@ manifest
 # Editor
 .vscode/
 .idea/
+
+# Personal
+MEMO.md

@@ -1,10 +1,11 @@
 # agent-contracts
 
+[![PyPI version](https://img.shields.io/pypi/v/agent-contracts.svg)](https://pypi.org/project/agent-contracts/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/agent-contracts.svg)](https://pypi.org/project/agent-contracts/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![CI](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml)
-
-[![Doceumentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://yatarousan0227.github.io/agent-contracts/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://yatarousan0227.github.io/agent-contracts/)
 
 **LangGraphエージェント構築のための、モジュラーでコントラクト駆動のノードアーキテクチャ**
 
@@ -479,12 +480,16 @@ class MyHooks(RuntimeHooks):
 |---------|------|
 | [01_contract_validation.py](examples/01_contract_validation.py) | 静的コントラクト検証デモ |
 | [02_routing_explain.py](examples/02_routing_explain.py) | 追跡可能なルーティング決定デモ |
+| [03_simple_chatbot.py](examples/03_simple_chatbot.py) | シンプルな3ノードチャットボット |
+| [04_multi_step_workflow.py](examples/04_multi_step_workflow.py) | マルチステップワークフロー |
 
 実行方法:
 
 ```bash
 python examples/01_contract_validation.py
 python examples/02_routing_explain.py
+python examples/03_simple_chatbot.py
+python examples/04_multi_step_workflow.py
 ```
 
 ---
