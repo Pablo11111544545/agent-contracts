@@ -59,9 +59,11 @@ class BaseActionRouter(ABC):
         try:
             next_node = self.route(action, state)
             logger.info(f"Routed: action={action} -> {next_node}")
+            # LangGraph reducer merges this into existing _internal slice
             return {"_internal": {"next_node": next_node}}
         except ValueError as e:
             logger.error(f"Routing failed: {e}")
+            # LangGraph reducer merges these updates into existing slices
             return {
                 "_internal": {"next_node": None, "error": str(e)},
                 "response": {

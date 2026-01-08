@@ -21,6 +21,8 @@
 - **🧠 LLM駆動スーパーバイザー**: ルールヒントを参考にLLMがルーティングを決定
 - **💬 インタラクティブノード**: インタビューパターンを持つ会話型エージェント用の基底クラス
 - **📊 型付き状態管理**: Pydanticベースの状態スライスとバリデーション
+- **🔒 StateAccessorパターン**: 型安全でイミュータブルな状態アクセス、IDE補完対応
+- **🔄 Runtimeレイヤー**: フック、セッション管理、ストリーミングを備えた統合実行エンジン
 - **⚙️ YAML設定**: Pydanticバリデーション付きの外部設定
 - **🏗️ アーキテクチャ視覚化**: コントラクトから包括的なドキュメントを自動生成
 
@@ -343,17 +345,154 @@ print(visualizer.generate_nodes_reference())
 | `BaseAgentState` | スライス付き基底状態クラス |
 | `ContractVisualizer` | アーキテクチャドキュメント生成 |
 
-### 状態管理
+### Runtimeレイヤー
+
+| エクスポート | 説明 |
+|-------------|------|
+| `AgentRuntime` | ライフサイクルフック付き統合実行エンジン |
+| `StreamingRuntime` | SSE用ノード単位ストリーミング |
+| `RequestContext` | 実行リクエストコンテナ |
+| `ExecutionResult` | レスポンス付き実行結果 |
+| `RuntimeHooks` | カスタマイズフック用Protocol |
+| `SessionStore` | セッション永続化用Protocol |
+| `InMemorySessionStore` | 開発/テスト用インメモリストア |
+
+### StateAccessorパターン
+
+型安全でイミュータブルな状態アクセス：
 
 ```python
 from agent_contracts import (
-    BaseAgentState,
-    BaseRequestSlice,
-    BaseResponseSlice,
-    get_slice,
-    merge_slice_updates,
+    Internal,
+    Request,
+    Response,
+    reset_response,
 )
+
+# 状態の読み取り
+count = Internal.turn_count.get(state)
+
+# 状態の書き込み（イミュータブル - 新しいstateを返す）
+state = Internal.turn_count.set(state, 5)
+state = reset_response(state)
 ```
+
+### 状態操作ヘルパー
+
+```python
+from agent_contracts.runtime import (
+    create_base_state,
+    merge_session,
+    reset_internal_flags,
+    update_slice,
+)
+
+# 初期状態の作成
+state = create_base_state(session_id="abc", action="answer")
+
+# セッションデータのマージ
+state = merge_session(state, session_data, ["interview", "shopping"])
+
+# スライスの更新
+state = update_slice(state, "interview", question_count=5)
+```
+
+---
+
+## 🔄 Runtimeレイヤー
+
+本番アプリケーションでは、統合実行のためにRuntimeレイヤーを使用：
+
+### AgentRuntime
+
+```python
+from agent_contracts import AgentRuntime, RequestContext, InMemorySessionStore
+
+runtime = AgentRuntime(
+    graph=compiled_graph,
+    session_store=InMemorySessionStore(),
+)
+
+result = await runtime.execute(RequestContext(
+    session_id="abc123",
+    action="answer",
+    message="カジュアルが好き",
+    resume_session=True,
+))
+
+print(result.response_type)  # "interview", "proposals" など
+print(result.response_data)  # レスポンスペイロード
+```
+
+### StreamingRuntime（SSE対応）
+
+```python
+from agent_contracts.runtime import StreamingRuntime
+
+runtime = (
+    StreamingRuntime()
+    .add_node("search", search_node, "検索中...")
+    .add_node("stylist", stylist_node, "おすすめ生成中...")
+)
+
+async for event in runtime.stream(request):
+    yield event.to_sse()
+```
+
+### カスタムフック & セッションストア
+
+アプリケーション固有のProtocol実装：
+
+```python
+from agent_contracts import RuntimeHooks, SessionStore
+
+class PostgresSessionStore(SessionStore):
+    async def load(self, session_id: str) -> dict | None:
+        return await self.db.get_session(session_id)
+    
+    async def save(self, session_id: str, data: dict, ttl: int = 3600):
+        await self.db.save_session(session_id, data, ttl)
+    
+    async def delete(self, session_id: str):
+        await self.db.delete_session(session_id)
+
+class MyHooks(RuntimeHooks):
+    async def prepare_state(self, state, request):
+        # 実行前の状態正規化
+        return state
+    
+    async def after_execution(self, state, result):
+        # セッション永続化、ログなど
+        pass
+```
+
+---
+
+## 📖 サンプル
+
+| サンプル | 説明 |
+|---------|------|
+| [01_contract_validation.py](examples/01_contract_validation.py) | 静的コントラクト検証デモ |
+| [02_routing_explain.py](examples/02_routing_explain.py) | 追跡可能なルーティング決定デモ |
+
+実行方法:
+
+```bash
+python examples/01_contract_validation.py
+python examples/02_routing_explain.py
+```
+
+---
+
+## 📚 ドキュメント
+
+| ドキュメント | 説明 |
+|-------------|------|
+| [はじめに](docs/getting_started.ja.md) | agent-contractsの始め方 |
+| [コアコンセプト](docs/core_concepts.ja.md) | アーキテクチャの詳細 |
+| [ベストプラクティス](docs/best_practices.ja.md) | 設計パターンとヒント |
+| [トラブルシューティング](docs/troubleshooting.ja.md) | よくある問題と解決策 |
+
 
 ---
 
