@@ -8,187 +8,194 @@
 ![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
 [![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://yatarousan0227.github.io/agent-contracts/)
 
-**LangGraphエージェント構築のための、モジュラーでコントラクト駆動のノードアーキテクチャ**
-
 [English](README.md) | 日本語
 
-`agent-contracts`は、宣言的なコントラクトを使用してAIエージェントを構築するための構造化されたフレームワークです。ノードのI/O、依存関係、ルーティングルールを定義し、自動グラフ構築、型安全な状態管理、柔軟なLLMベースのルーティングを実現します。
+**LangGraphエージェントを構築するための、モジュール式・契約駆動型ノードアーキテクチャ。**
+
+---
+
+### The Problem (課題)
+LangGraphを使ったマルチエージェントシステムの構築は強力ですが、規模が大きくなると管理が難しくなります。ノードが増えるにつれて、手動での配線（`graph.add_edge`）は複雑化し、ルーティングロジックは条件付きエッジの中に分散し、データの流れを追うことが不可能になります。
+
+### Why agent-contracts? (なぜ必要なのか)
+メンテナンス可能なエージェントシステムを構築するには、**ノードの振る舞い**（何をするか）と**グラフの構造**（どう繋がるか）を分離する必要があります。LLMによる柔軟なルーティングを犠牲にすることなく、厳密なインターフェース定義が必要です。
+
+### The Solution (解決策)
+`agent-contracts` は LangGraph に **Contract-Driven Development（契約駆動開発）** を持ち込みます。
+エッジを手動で配線するのではなく、各エージェントに対して `NodeContract`（入力、出力、実行条件）を定義します。フレームワークはこれらの契約（Contract）を**自動的にコンパイル**し、複雑なルーティング、型チェック、状態管理を処理する完全な機能を持つLangGraphを構築します。
 
 ![アーキテクチャ概要](images/overview.png)
+---
 
-📘 **完全なドキュメント**: [https://yatarousan0227.github.io/agent-contracts/](https://yatarousan0227.github.io/agent-contracts/)
+## 🎯 Target Audience (想定読者)
 
+このライブラリは以下の方向けです：
+- **複雑なマルチエージェントシステムを構築する開発者**：構造と保守性を必要とする場合。
+- **チーム開発**：メンバーが異なるエージェントモジュールを分担して開発する場合。
+- **プロダクションアプリケーション**：厳密なインターフェース定義（I/O）と型安全性を必要とする場合。
+
+*対象外：LangChain/LangGraphの基本機能だけで十分な、単純な線形チャットボットやシングルエージェントのプロトタイプ。*
 
 ---
 
-## ✨ 特徴
+## 💡 Use Cases (ユースケース)
 
-- **📝 コントラクト駆動設計**: `NodeContract`を通じてノードのI/O、依存関係、トリガー条件を宣言
-- **🔧 レジストリベースアーキテクチャ**: 手動配線なしで登録されたノードからLangGraphを自動構築
-- **🧠 LLM駆動スーパーバイザー**: ルールヒントを参考にLLMがルーティングを決定
-- **💬 インタラクティブノード**: インタビューパターンを持つ会話型エージェント用の基底クラス
-- **📊 型付き状態管理**: Pydanticベースの状態スライスとバリデーション
-- **🔒 StateAccessorパターン**: 型安全でイミュータブルな状態アクセス、IDE補完対応
-- **🔄 Runtimeレイヤー**: フック、セッション管理、ストリーミングを備えた統合実行エンジン
-- **⚙️ YAML設定**: Pydanticバリデーション付きの外部設定
-- **🏗️ アーキテクチャ視覚化**: コントラクトから包括的なドキュメントを自動生成
+- **複雑なルーティングロジック**: ルール（例：「変数Xがセットされている場合」）とLLMの判断（例：「ユーザーが購入を意図している場合」）が混在する、数十のエージェントを持つシステムを管理する。
+- **モジュール化されたエージェント開発**: エージェントのロジックを分離します。開発者はグラフ全体の構造を知らなくても、契約（Contract）だけを定義して「検索エージェント」を実装できます。
+- **ハイブリッド・スーパーバイザー**: 明確なビジネスルールを優先し、曖昧なケースではLLMにフォールバックするスーパーバイザーを、手間なく実装できます。
 
 ---
 
-## 📦 インストール
+## 🆚 Comparison (比較)
 
-```bash
-pip install agent-contracts
+| 機能 | Vanilla LangGraph | agent-contracts |
+|---------|-------------------|-----------------|
+| **配線 (Wiring)** | 手動 `add_edge` & `add_conditional_edges` | Contractに基づく **完全自動** |
+| **ルーティング** | 条件付き関数内の独自ロジック | 宣言的な `TriggerConditions` (ルール + LLM) |
+| **状態アクセス** | 安全でない辞書アクセス (`state["key"]`) | **型安全** な `StateAccessor` パターン |
+| **スケーラビリティ** | グラフが大きくなると保守困難 | **モジュール式**、ノードは自己完結 |
+| **可観測性** | 標準的なトレーシング | **拡張版**、なぜそのノードが選ばれたかを追跡 |
 
-# または git から
-pip install git+https://github.com/yatarousan0227/agent-contracts.git
+---
+
+## 🏗️ Architecture (アーキテクチャ)
+
+```mermaid
+graph TD
+    subgraph Definition
+        C[NodeContract] -->|Defines| N[ModularNode]
+        C -->|Specifies| I[Inputs/Outputs]
+        C -->|Specifies| T[TriggerConditions]
+    end
+
+    subgraph Build Time
+        R[NodeRegistry] -->|Collects| N
+        GB[GraphBuilder] -->|Reads| R
+        GB -->|Compiles to| LG[LangGraph]
+    end
+
+    subgraph Runtime
+        LG -->|Executes| S[Supervisor]
+        S -->|Evaluates| T
+        S -->|Routes to| N
+    end
 ```
 
-### 必要要件
-
-- Python 3.11+
-- LangGraph >= 0.2.0
-- LangChain Core >= 0.3.0
-- Pydantic >= 2.0.0
+1. **Define**: **Contract** (I/O と Trigger) を持つノードを作成します。
+2. **Register**: ノードを **Registry** に登録します。
+3. **Build**: **GraphBuilder** がレジストリを読み込み、実行可能な LangGraph にコンパイルします。
+4. **Run**: **Supervisor** が契約に基づいてトラフィックを動的にルーティングします。
 
 ---
 
-## 🚀 クイックスタート
+## 🚀 Quick Start
 
-### 1. コントラクト付きノードの定義
+### 1. Hello World (最小構成)
+
+値を返すだけのシンプルなノードを定義します。
 
 ```python
-from agent_contracts import ModularNode, NodeContract, NodeInputs, NodeOutputs, TriggerCondition
+from agent_contracts import ModularNode, NodeContract, NodeInputs, NodeOutputs
+from agent_contracts import get_node_registry, build_graph_from_registry
 
-class GreetingNode(ModularNode):
+# 1. ノードの定義
+class HelloNode(ModularNode):
     CONTRACT = NodeContract(
-        name="greeting",
-        description="パーソナライズされた挨拶を生成",
-        reads=["request"],
+        name="hello",
         writes=["response"],
-        requires_llm=True,
-        supervisor="main",
-        trigger_conditions=[
-            TriggerCondition(
-                when={"request.action": "greet"},
-                priority=10,
-            )
-        ],
+        trigger_conditions=[{"priority": 100}]  # 常に最優先でトリガー
     )
 
     async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
-        request = inputs.get_slice("request")
-        user_name = request.get("params", {}).get("name", "ユーザー")
-        
-        # LLMで挨拶を生成
-        response = await self.llm.ainvoke(
-            f"{user_name}さんへのフレンドリーな挨拶を生成してください",
-            config=config,  # トレース用にconfigを渡す
-        )
-        
-        return NodeOutputs(
-            response={
-                "response_type": "greeting",
-                "response_data": {"message": response.content},
-            }
-        )
-```
+        return NodeOutputs(response={"message": "Hello World!"})
 
-### 2. 登録とグラフ構築
-
-```python
-from agent_contracts import get_node_registry, build_graph_from_registry
-from langchain_openai import ChatOpenAI
-
-# グローバルレジストリを取得
+# 2. 登録とビルド
 registry = get_node_registry()
+registry.register(HelloNode)
 
-# ノードを登録
-registry.register(GreetingNode)
-
-# LangGraphを構築
-llm = ChatOpenAI(model="gpt-4")
-graph = build_graph_from_registry(
-    registry=registry,
-    llm=llm,
-    supervisors=["main"],
-)
+graph = build_graph_from_registry(registry=registry, supervisors=["main"])
 compiled = graph.compile()
 
-# グラフを実行
-result = await compiled.ainvoke({
-    "request": {
-        "action": "greet",
-        "params": {"name": "太郎"}
-    },
-})
+# 3. 実行
+print(await compiled.ainvoke({"input": "start"}))
+```
+
+### 2. Practical Example (ルーティング)
+
+ルールベースのトリガーとLLMベースのトリガーを組み合わせた、より実践的な構成です。
+
+```python
+from agent_contracts import ModularNode, NodeContract, TriggerCondition
+
+# Node A: ユーザーが「天気」について尋ねた場合に実行 (LLMによる意味的一致)
+class WeatherNode(ModularNode):
+    CONTRACT = NodeContract(
+        name="weather_agent",
+        requires_llm=True,
+        trigger_conditions=[
+            TriggerCondition(
+                llm_hint="User is asking about the weather forecast",
+                priority=10
+            )
+        ]
+    )
+    # ... 実装 ...
+
+# Node B: 特定のフラグがある場合に実行 (ルール一致)
+class UrgentNode(ModularNode):
+    CONTRACT = NodeContract(
+        name="urgent_agent",
+        trigger_conditions=[
+            TriggerCondition(
+                when={"request.priority": "high"},
+                priority=20  # LLMより先にチェックされる
+            )
+        ]
+    )
+    # ... 実装 ...
 ```
 
 ---
 
-## 🏗️ コアコンセプト
+## ✨ Key Features
+
+- **📝 Contract-Driven Design**: `NodeContract` を通じて、入力/出力、依存関係、トリガー条件を宣言します。
+- **🔧 Registry-Based Architecture**: 手動配線なしで、登録されたノードから LangGraph を自動構築します。
+- **🧠 LLM-Driven Supervisor**: 決定論的なルールと LLM の推論を組み合わせたインテリジェントなルーティング。
+- **📊 Typed State Management**: 厳密なバリデーションを持つ Pydantic ベースの状態スライス。
+- **🔒 StateAccessor**: IDEの自動補完が効く、型安全でイミュータブルな状態アクセス。
+- **🔄 Unified Runtime**: フック、セッション管理、ストリーミング (SSE) をサポートする実行エンジン。
+- **⚙️ Configuration**: Pydantic バリデーション付きの YAML で設定を外部化。
+
+---
+
+## 🏗️ Core Concepts
 
 ### NodeContract
-
-`NodeContract`はこのライブラリの中心です。ノードに関するすべてを宣言します：
+契約（Contract）はノードの「正像」です。
 
 ```python
 NodeContract(
-    # 識別情報
-    name="my_node",                    # 一意のノード識別子
-    description="このノードが行うこと", # 人間が読める説明
-    
-    # I/O定義（状態スライス単位）
-    reads=["request", "context"],      # このノードが読み取る状態スライス
-    writes=["response"],               # このノードが書き込む状態スライス
-    
-    # 依存関係
+    name="my_node",
+    description="Calculates mortgage payments",
+    reads=["user_profile", "loan_data"],
+    writes=["payment_schedule"],
     requires_llm=True,                 # LLMが必要かどうか
-    services=["db_service"],           # 必要なサービス名
-    
-    # ルーティング
     supervisor="main",                 # このノードを管理するスーパーバイザー
-    trigger_conditions=[...],          # このノードをトリガーする条件
-    is_terminal=False,                 # 実行後にENDするかどうか
-)
-```
-
-### TriggerCondition
-
-スーパーバイザーがノードを選択するタイミングを定義：
-
-```python
-TriggerCondition(
-    priority=10,                           # 高いほど優先的に評価
-    when={"request.action": "search"},     # ルールベースのマッチング
-    when_not={"response.done": True},      # 否定マッチング
-    llm_hint="商品検索に使用",             # LLMルーティングのヒント
+    trigger_conditions=[
+        TriggerCondition(llm_hint="User asks about monthly payments")
+    ]
 )
 ```
 
 ### GenericSupervisor
-
-スーパーバイザーはノード選択を統括します：
-
-1. **即時ルール**: 終端状態のチェック
-2. **明示的ルーティング**: 回答を質問元ノードに返す
-3. **ルールヒント収集**: トリガー条件から候補を収集
-4. **LLM判断**: ルールヒントを参考にLLMが最終決定
-5. **フォールバック**: LLM不在時はルール候補を使用
-
-```python
-from agent_contracts import GenericSupervisor
-
-supervisor = GenericSupervisor(
-    supervisor_name="main",
-    llm=llm,
-    max_iterations=10,
-)
-```
+スーパーバイザーが制御フローを処理します：
+1.  **Strict Rules**: 高優先度の `when` 条件をチェックします。
+2.  **LLM Decision**: マッチするルールがない場合、`llm_hint` を使って LLM に問い合わせます。
+3.  **Fallback**: 決定できない場合のデフォルトの振る舞い。
 
 ### InteractiveNode
-
-会話型エージェントには`InteractiveNode`を継承：
+対話型エージェントの作成には、`InteractiveNode` を継承します。これは、ターンの制御、質問の生成、回答の処理を行うための構造化された方法を提供します。
 
 ```python
 from agent_contracts import InteractiveNode
@@ -201,12 +208,12 @@ class InterviewNode(InteractiveNode):
         return {"interview_state": inputs.get_slice("interview")}
     
     def check_completion(self, context, inputs):
-        """インタビュー完了をチェック"""
+        """インタビューが完了したかチェック"""
         return context["interview_state"].get("complete", False)
     
     async def process_answer(self, context, inputs):
         """ユーザーの回答を処理"""
-        # 回答を処理
+        # 回答処理ロジック
         return True
     
     async def generate_question(self, context, inputs):
@@ -214,203 +221,31 @@ class InterviewNode(InteractiveNode):
         return NodeOutputs(response={"question": "..."})
 ```
 
----
-
-## ⚙️ 設定
-
-プロジェクトに`agent_config.yaml`を作成：
-
-```yaml
-supervisor:
-  max_iterations: 10
-
-response_types:
-  terminal_states:
-    - interview
-    - proposals
-    - error
-
-interview:
-  my_interviewer:
-    max_turns: 10
-    max_questions: 5
-```
-
-設定の読み込み：
+### State Accessor
+文字列による安全でない状態アクセスを回避します。`StateAccessor` は状態スライスへの型安全な読み書きを提供します。
 
 ```python
-from agent_contracts.config import load_config, set_config, get_config
+from agent_contracts import Internal, reset_response
 
-# ファイルから読み込みグローバルに設定
-config = load_config("path/to/agent_config.yaml")
-set_config(config)
+# Bad
+user_id = state["profile"]["id"]
 
-# どこからでも設定にアクセス
-config = get_config()
-print(config.supervisor.max_iterations)
-```
+# Good (agent-contracts)
+user_id = Internal.user_id.get(state)
 
----
-
----
- 
- ## 🔍 可観測性 (LangSmith)
- 
- `agent-contracts`は[LangSmith](https://smith.langchain.com/)と完全に統合されており、トレースとデバッグが可能です。
- 
- ### 1. 環境変数の設定
- 
- ```bash
- export LANGCHAIN_TRACING_V2=true
- export LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
- export LANGCHAIN_API_KEY="<your-api-key>"
- export LANGCHAIN_PROJECT="my-agent-project"
- ```
- 
- ### 2. 自動トレース
- 
- グラフを実行するだけで、自動的にトレースがLangSmithに送信されます。フレームワークはデバッグに役立つ豊富なメタデータを追加します：
- 
- - **Supervisors**: 反復回数、決定理由、候補ルールを表示
- - **Nodes**: 実行時間、入出力スライス、ノードタイプを表示
- 
- ---
- 
- ## 🏗️ アーキテクチャ視覚化
-
-登録されたコントラクトから包括的なアーキテクチャドキュメントを生成：
-
-```python
-from agent_contracts import ContractVisualizer, get_node_registry
-
-registry = get_node_registry()
-# ... ノードを登録 ...
-# ... グラフを構築 ...
-# compiled_graph = graph.compile()
-
-# グラフを渡すことでLangGraphのフローも可視化可能
-visualizer = ContractVisualizer(registry, graph=compiled_graph)
-doc = visualizer.generate_architecture_doc()
-
-with open("ARCHITECTURE.md", "w") as f:
-    f.write(doc)
-```
-
-### 生成されるセクション
-
-| セクション | 説明 |
-|-----------|------|
-| **📦 State Slices** | 全スライスの読み書き関係 + ERダイアグラム |
-| **🔗 LangGraph Node Flow** | コンパイルされたグラフのMermaid可視化 |
-| **🎯 System Hierarchy** | Supervisor-Node構造のMermaidフローチャート |
-| **🔀 Data Flow** | 共有スライスによるノード依存関係 |
-| **⚡ Trigger Hierarchy** | 優先度順トリガー (🔴高 → 🟢低) |
-| **📚 Nodes Reference** | 全ノード詳細テーブル |
-
-### 個別セクション生成
-
-セクションを個別に生成することも可能：
-
-```python
-# LangGraphフロー
-print(visualizer.generate_langgraph_flow())
-
-# 状態スライスドキュメント
-print(visualizer.generate_state_slices_section())
-
-# 階層ダイアグラム
-print(visualizer.generate_hierarchy_diagram())
-
-# データフロー
-print(visualizer.generate_dataflow_diagram())
-
-# トリガー階層
-print(visualizer.generate_trigger_hierarchy())
-
-# ノード参照テーブル
-print(visualizer.generate_nodes_reference())
-```
-
-出力例は [ARCHITECTURE_SAMPLE.md](docs/ARCHITECTURE_SAMPLE.md) を参照。
-
----
- 
- ## 📚 APIリファレンス
-
-### 主要エクスポート
-
-| エクスポート | 説明 |
-|-------------|------|
-| `ModularNode` | すべてのノードの基底クラス |
-| `InteractiveNode` | 会話型ノードの基底クラス |
-| `NodeContract` | ノードI/Oコントラクト定義 |
-| `TriggerCondition` | ルーティング用トリガー条件 |
-| `NodeInputs` / `NodeOutputs` | 型付きI/Oコンテナ |
-| `NodeRegistry` | ノードの登録と探索 |
-| `GenericSupervisor` | LLM駆動ルーティングスーパーバイザー |
-| `GraphBuilder` | LangGraph自動構築 |
-| `BaseAgentState` | スライス付き基底状態クラス |
-| `ContractVisualizer` | アーキテクチャドキュメント生成 |
-
-### Runtimeレイヤー
-
-| エクスポート | 説明 |
-|-------------|------|
-| `AgentRuntime` | ライフサイクルフック付き統合実行エンジン |
-| `StreamingRuntime` | SSE用ノード単位ストリーミング |
-| `RequestContext` | 実行リクエストコンテナ |
-| `ExecutionResult` | レスポンス付き実行結果 |
-| `RuntimeHooks` | カスタマイズフック用Protocol |
-| `SessionStore` | セッション永続化用Protocol |
-| `InMemorySessionStore` | 開発/テスト用インメモリストア |
-
-### StateAccessorパターン
-
-型安全でイミュータブルな状態アクセス：
-
-```python
-from agent_contracts import (
-    Internal,
-    Request,
-    Response,
-    reset_response,
-)
-
-# 状態の読み取り
-count = Internal.turn_count.get(state)
-
-# 状態の書き込み（イミュータブル - 新しいstateを返す）
+# 書き込み (新しい状態を返す)
 state = Internal.turn_count.set(state, 5)
 state = reset_response(state)
 ```
 
-### 状態操作ヘルパー
-
-```python
-from agent_contracts.runtime import (
-    create_base_state,
-    merge_session,
-    reset_internal_flags,
-    update_slice,
-)
-
-# 初期状態の作成
-state = create_base_state(session_id="abc", action="answer")
-
-# セッションデータのマージ
-state = merge_session(state, session_data, ["interview", "shopping"])
-
-# スライスの更新
-state = update_slice(state, "interview", question_count=5)
-```
-
 ---
 
-## 🔄 Runtimeレイヤー
+## 🔄 Runtime Layer
 
-本番アプリケーションでは、統合実行のためにRuntimeレイヤーを使用：
+プロダクションアプリケーションでは、統一された実行、ライフサイクルフック、ストリーミングのためにRuntime Layerを使用します。
 
 ### AgentRuntime
+標準的なリクエスト/レスポンス実行。
 
 ```python
 from agent_contracts import AgentRuntime, RequestContext, InMemorySessionStore
@@ -423,106 +258,177 @@ runtime = AgentRuntime(
 result = await runtime.execute(RequestContext(
     session_id="abc123",
     action="answer",
-    message="カジュアルが好き",
-    resume_session=True,
+    message="I like casual style",
+    resume_session=True, # ストアから状態をロード
 ))
 
-print(result.response_type)  # "interview", "proposals" など
+print(result.response_type)  # "interview", "proposals", etc.
 print(result.response_data)  # レスポンスペイロード
 ```
 
-### StreamingRuntime（SSE対応）
+### StreamingRuntime (SSE)
+SSE (Server-Sent Events) ストリーミングをサポートし、各ノードの実行時にイベントを送信します。
 
 ```python
 from agent_contracts.runtime import StreamingRuntime
 
 runtime = (
     StreamingRuntime()
-    .add_node("search", search_node, "検索中...")
-    .add_node("stylist", stylist_node, "おすすめ生成中...")
+    .add_node("search", search_node, "Searching...")
+    .add_node("stylist", stylist_node, "Generating recommendations...")
 )
 
 async for event in runtime.stream(request):
     yield event.to_sse()
 ```
 
-### カスタムフック & セッションストア
-
-アプリケーション固有のProtocol実装：
+### Custom Hooks & Session Store
+振る舞いをカスタマイズするためにプロトコルを実装します。
 
 ```python
 from agent_contracts import RuntimeHooks, SessionStore
 
-class PostgresSessionStore(SessionStore):
-    async def load(self, session_id: str) -> dict | None:
-        return await self.db.get_session(session_id)
-    
-    async def save(self, session_id: str, data: dict, ttl: int = 3600):
-        await self.db.save_session(session_id, data, ttl)
-    
-    async def delete(self, session_id: str):
-        await self.db.delete_session(session_id)
-
 class MyHooks(RuntimeHooks):
     async def prepare_state(self, state, request):
-        # 実行前の状態正規化
+        # 実行前に状態を正規化またはエンリッチ
         return state
     
     async def after_execution(self, state, result):
-        # セッション永続化、ログなど
+        # セッションの永続化やログ出力など
         pass
 ```
 
 ---
 
-## 📖 サンプル
-
-| サンプル | 説明 |
-|---------|------|
-| [01_contract_validation.py](examples/01_contract_validation.py) | 静的コントラクト検証デモ |
-| [02_routing_explain.py](examples/02_routing_explain.py) | 追跡可能なルーティング決定デモ |
-| [03_simple_chatbot.py](examples/03_simple_chatbot.py) | シンプルな3ノードチャットボット |
-| [04_multi_step_workflow.py](examples/04_multi_step_workflow.py) | マルチステップワークフロー |
-
-実行方法:
+## 📦 Installation
 
 ```bash
-python examples/01_contract_validation.py
-python examples/02_routing_explain.py
-python examples/03_simple_chatbot.py
-python examples/04_multi_step_workflow.py
+pip install agent-contracts
+
+# gitからインストールする場合
+pip install git+https://github.com/yatarousan0227/agent-contracts.git
+```
+
+### Requirements
+- Python 3.11+
+- LangGraph >= 0.2.0
+- LangChain Core >= 0.3.0
+- Pydantic >= 2.0.0
+
+---
+
+## ⚙️ Configuration
+
+コードを変更することなくエージェントの振る舞いを管理できます。
+
+```yaml
+# agent_config.yaml
+supervisor:
+    max_iterations: 10
+    model_name: "gpt-4o"
+
+interview:
+    max_questions: 5
+```
+
+```python
+from agent_contracts.config import load_config
+config = load_config("agent_config.yaml")
 ```
 
 ---
 
-## 📚 ドキュメント
+## 🔍 Observability (LangSmith)
 
-| ドキュメント | 説明 |
-|-------------|------|
-| [はじめに](docs/getting_started.ja.md) | agent-contractsの始め方 |
-| [コアコンセプト](docs/core_concepts.ja.md) | アーキテクチャの詳細 |
-| [ベストプラクティス](docs/best_practices.ja.md) | 設計パターンとヒント |
-| [トラブルシューティング](docs/troubleshooting.ja.md) | よくある問題と解決策 |
+`agent-contracts` は [LangSmith](https://smith.langchain.com/) と完全に統合されており、深いトレーシングが可能です。
 
+- **推論の可視化**: なぜ Node B ではなく Node A が選ばれたのか？
+- **使用状況の追跡**: ループは何回回ったか？
 
----
+LangChain の API キーを設定する必要があります：
 
-## 🤝 コントリビューション
-
-コントリビューションを歓迎します！お気軽にPull Requestを送信してください。
+```bash
+export LANGCHAIN_TRACING_V2=true
+export LANGCHAIN_API_KEY="..."
+```
 
 ---
 
-## 📄 ライセンス
+## 🏗️ Architecture Visualization
 
-このプロジェクトはMozilla Public License 2.0 (MPL-2.0)の下で公開されています - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
+コードからプロフェッショナルなドキュメントを生成します。
 
-> **なぜMPL 2.0？** コミュニティからの貢献を促進しつつ、統合のしやすさを維持するためにMPL 2.0を選択しました。`agent-contracts`のコアファイルへの改善は共有が必要ですが、独自のノードや拡張機能はあなたのものとして保持できます。
+```python
+from agent_contracts import ContractVisualizer
+visualizer = ContractVisualizer(registry, graph=compiled)
+doc = visualizer.generate_architecture_doc()
+```
+
+### 生成されるセクション
+
+| セクション | 説明 |
+|---------|-------------|
+| **📦 State Slices** | 読み手/書き手を含む全スライス + ER図 |
+| **🔗 LangGraph Node Flow** | コンパイルされたLangGraphのMermaid可視化 |
+| **🎯 System Hierarchy** | スーパーバイザー-ノード構造のMermaidフローチャート |
+| **🔀 Data Flow** | 共有スライスを通じたノード依存関係 |
+| **⚡ Trigger Hierarchy** | 優先度順のトリガー (🔴 高 → 🟢 低) |
+| **📚 Nodes Reference** | 全ノードの詳細テーブル |
+
+各セクションを個別に生成することも可能です：
+
+```python
+print(visualizer.generate_langgraph_flow())
+print(visualizer.generate_state_slices_section())
+```
+
+出力例は [ARCHITECTURE_SAMPLE.md](docs/ARCHITECTURE_SAMPLE.md) を参照してください。
 
 ---
 
-## 🔗 リンク
+## 📚 API Reference
 
-- [GitHubリポジトリ](https://github.com/yatarousan0227/agent-contracts)
-- [LangGraphドキュメント](https://langchain-ai.github.io/langgraph/)
-- [LangChainドキュメント](https://python.langchain.com/)
+### Main Exports
+
+| Export | Description |
+|--------|-------------|
+| `ModularNode` | すべてのエージェントの基底クラス。 |
+| `InteractiveNode` | 対話型エージェントの基底クラス。 |
+| `NodeContract` | ノードI/O契約（Contract）定義。 |
+| `TriggerCondition` | ルーティングのためのトリガー条件。 |
+| `NodeInputs` / `NodeOutputs` | 型付きI/Oコンテナ。 |
+| `NodeRegistry` | ノードの登録と検出。 |
+| `GenericSupervisor` | LLM駆動のルーティングスーパーバイザー。 |
+| `GraphBuilder` | LangGraph自動構築ビルダー。 |
+| `BaseAgentState` | スライスを持つ基底状態クラス。 |
+| `ContractVisualizer` | アーキテクチャドキュメント生成ツール。 |
+
+### Runtime Layer
+
+| Export | Description |
+|--------|-------------|
+| `AgentRuntime` | ライフサイクルフックを持つ統合実行エンジン。 |
+| `StreamingRuntime` | SSEのためのノードごとのストリーミング。 |
+| `RequestContext` | 実行リクエストコンテナ。 |
+| `ExecutionResult` | レスポンスを含む実行結果。 |
+| `RuntimeHooks` | カスタマイズフック用プロトコル。 |
+| `SessionStore` | セッション永続化用プロトコル。 |
+
+---
+
+## 🤝 Contributing
+
+貢献は大歓迎です！プルリクエストを送ってください。
+
+---
+
+## 📄 License
+
+このプロジェクトは Mozilla Public License 2.0 (MPL-2.0) の下でライセンスされています。詳細は [LICENSE](LICENSE) ファイルをご覧ください。
+
+---
+
+## 🔗 Links
+
+- [GitHub Repository](https://github.com/yatarousan0227/agent-contracts)
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
