@@ -153,9 +153,55 @@ class GenericSupervisor:
                 break
         return selected
     
+    def _format_rule_candidates_with_reasons(
+        self,
+        matches: list[tuple[int, str]],
+        candidates: list[str],
+    ) -> str:
+        """Format rule candidates with match reasons for LLM context.
+        
+        Example output:
+            - appearance_analyst (P95): matched because request.user_image=True
+            - interview_strategy (P90): matched because request.request_action=create_card
+        """
+        if not candidates:
+            return "(none)"
+        
+        lines = []
+        for priority, node_name in matches:
+            if node_name not in candidates:
+                continue
+            
+            contract = self.registry.get_contract(node_name)
+            if not contract:
+                lines.append(f"- {node_name} (P{priority})")
+                continue
+            
+            # Find the matching condition
+            condition_str = ""
+            for condition in contract.trigger_conditions:
+                if condition.priority == priority:
+                    if condition.when:
+                        parts = [f"{k}={v}" for k, v in condition.when.items()]
+                        condition_str = " AND ".join(parts)
+                    elif condition.when_not:
+                        parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
+                        condition_str = " AND ".join(parts)
+                    else:
+                        condition_str = "(always)"
+                    break
+            
+            if condition_str:
+                lines.append(f"- {node_name} (P{priority}): matched because {condition_str}")
+            else:
+                lines.append(f"- {node_name} (P{priority})")
+        
+        return "\n".join(lines) if lines else "(none)"
+    
     async def _decide_with_llm(
         self, 
         state: dict,
+        matches: list[tuple[int, str]],
         rule_candidates: list[str],
         child_decision: str | None,
         config: Optional[RunnableConfig] = None,
@@ -167,11 +213,18 @@ class GenericSupervisor:
             # Add current state info
             request = state.get("request", {})
             
+            # Format candidates with match reasons
+            candidates_with_reasons = self._format_rule_candidates_with_reasons(
+                matches, rule_candidates
+            )
+            
             context = f"""
 Current action: {request.get('action', 'unknown')}
 User message: {request.get('message', 'None')}
 
-High priority system rules suggest: {rule_candidates}
+High priority system rules suggest:
+{candidates_with_reasons}
+
 Last active node suggested: {child_decision or 'None'}
 """
             full_prompt = f"{prompt}\n\nContext:\n{context}"
@@ -321,6 +374,7 @@ Last active node suggested: {child_decision or 'None'}
         if self.llm:
             llm_result = await self._decide_with_llm(
                 state,
+                matches,
                 rule_candidates,
                 child_decision,
                 config=config,
