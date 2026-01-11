@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-01-11
+
+### Changed
+
+- **GenericSupervisor context optimization** (BREAKING BEHAVIOR CHANGE)
+  - `_collect_context_slices()` now returns minimal context: `{"request", "response", "_internal"}`
+  - Previously included all candidate nodes' `reads` slices
+  - **Rationale**: Candidate slices are already evaluated in trigger conditions, passing them to LLM is redundant
+  - **Benefits**:
+    - Significant token reduction (fewer slices sent to LLM)
+    - Clearer responsibility separation: Triggers = rule-based filtering, LLM = final selection
+    - Better performance (less data to summarize and transmit)
+    - Maintains conversation context via `response` for better LLM understanding
+  - **Impact**: LLM routing decisions based on user request, previous response, and internal state
+  - Updated 2 test cases to reflect new minimal context behavior
+  - No API changes - internal implementation optimization
+
+### Removed
+
+- **StateSummarizer completely removed** (BREAKING API CHANGE)
+  - Removed `agent_contracts.utils.summarizer` module entirely
+  - Removed `StateSummarizer` class and `summarize_state_slice()` function
+  - Removed 22 test cases in `test_summarizer.py`
+  - Removed from `agent_contracts.utils.__all__` exports
+  - **Rationale**: Not used anywhere in the codebase after supervisor optimization
+  - **Migration**: If you were using StateSummarizer, use `json.dumps()` instead:
+    ```python
+    # Before
+    from agent_contracts.utils import StateSummarizer
+    summarizer = StateSummarizer()
+    summary = summarizer.summarize(data)
+    
+    # After
+    import json
+    summary = json.dumps(data, ensure_ascii=False, default=str)
+    ```
+
+- **StateSummarizer removed from GenericSupervisor**
+  - Removed `_summarize_slice()` method - now uses direct JSON serialization
+  - Removed `summarizer` parameter from `__init__()`
+  - **Rationale**: `request`, `response`, `_internal` are small slices that don't need summarization
+  - **Benefits**:
+    - Simpler implementation (no summarization overhead)
+    - No information loss (full data preserved)
+    - Faster execution (direct JSON serialization)
+    - Easier debugging (actual data visible in prompts)
+  - Uses `json.dumps()` with `ensure_ascii=False` and `default=str` for robust serialization
+
+### Notes
+
+- This change clarifies the supervisor's role: making routing decisions based on:
+  - User intent (`request`)
+  - Conversation flow (`response`)
+  - Execution state (`_internal`)
+- Other state slices (e.g., `interview`, `profile_card`) are already evaluated in trigger conditions and don't need to be re-evaluated by LLM
+- If specific state is needed for routing, it should be added to trigger conditions, not passed to LLM
+
 ## [0.2.2] - 2026-01-11
 
 ### Added

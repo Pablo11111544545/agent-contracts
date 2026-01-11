@@ -303,8 +303,9 @@ class TestGenericSupervisor:
             rule_candidates=["node1"]
         )
         
-        # Should include base slices + node1's reads
-        expected = {"request", "response", "_internal", "profile_card"}
+        # Should include minimal slices (request, response, _internal)
+        # Candidate node reads are not included as they're already evaluated in triggers
+        expected = {"request", "response", "_internal"}
         assert slices == expected
         
         # Test with both nodes as candidates
@@ -313,70 +314,17 @@ class TestGenericSupervisor:
             rule_candidates=["node1", "node2"]
         )
         
-        # Should include base slices + both nodes' reads
-        expected = {"request", "response", "_internal", "profile_card", "interview"}
+        # Should still only include minimal slices regardless of candidates
+        expected = {"request", "response", "_internal"}
         assert slices == expected
 
-    async def test_summarize_slice_dict(self, mock_registry):
-        """Test slice summarization for dict data."""
-        supervisor = GenericSupervisor(
-            supervisor_name="main",
-            llm=None,
-            registry=mock_registry
-        )
-        
-        # Small dict
-        small_dict = {"key1": "value1", "key2": "value2"}
-        summary = supervisor._summarize_slice("test", small_dict)
-        assert "test:" in summary
-        assert "key1" in summary
-        
-        # Large dict (should be truncated)
-        large_dict = {f"key{i}": f"value{i}" * 50 for i in range(20)}
-        summary = supervisor._summarize_slice("test", large_dict)
-        assert "test:" in summary
-        assert "..." in summary or "key" in summary
 
-    async def test_summarize_slice_list(self, mock_registry):
-        """Test slice summarization for list data."""
-        supervisor = GenericSupervisor(
-            supervisor_name="main",
-            llm=None,
-            registry=mock_registry
-        )
+    async def test_llm_receives_minimal_context(self, mock_registry, mock_llm):
+        """Test that LLM receives minimal context (request + response + _internal).
         
-        # Empty list
-        summary = supervisor._summarize_slice("test", [])
-        assert "test:" in summary
-        assert "[]" in summary or "(empty)" in summary
-        
-        # Small list
-        small_list = [1, 2, 3]
-        summary = supervisor._summarize_slice("test", small_list)
-        assert "test:" in summary
-        
-        # Large list (should show count)
-        large_list = list(range(100))
-        summary = supervisor._summarize_slice("test", large_list)
-        assert "test:" in summary
-        assert "items" in summary or "100" in summary
-
-    async def test_summarize_slice_empty(self, mock_registry):
-        """Test slice summarization for empty data."""
-        supervisor = GenericSupervisor(
-            supervisor_name="main",
-            llm=None,
-            registry=mock_registry
-        )
-        
-        summary = supervisor._summarize_slice("test", None)
-        assert "test: (empty)" in summary
-        
-        summary = supervisor._summarize_slice("test", {})
-        assert "test: (empty)" in summary
-
-    async def test_llm_receives_enriched_context(self, mock_registry, mock_llm):
-        """Test that LLM receives enriched context with candidate slices."""
+        Candidate node reads are not included as they're already evaluated in triggers.
+        This reduces token usage while maintaining conversation context.
+        """
         # Create contract with specific reads
         contract = NodeContract(
             name="analyzer",
@@ -431,10 +379,13 @@ class TestGenericSupervisor:
         call_args = mock_llm.with_structured_output.return_value.ainvoke.call_args
         prompt = call_args[0][0]
         
-        # Verify enriched context includes candidate slices
+        # Verify minimal context includes request, response, and _internal
         assert "request:" in prompt
-        assert "profile_card:" in prompt
-        assert "interview:" in prompt
+        assert "response:" in prompt
+        assert "_internal:" in prompt
+        # These should NOT be included (already evaluated in triggers)
+        assert "profile_card:" not in prompt
+        assert "interview:" not in prompt
         
         assert result.next_node == "analyzer"
 

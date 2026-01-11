@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-contracts"
-version = "0.2.2"
+version = "0.2.3"
 description = "Modular node architecture for LangGraph agents"
 readme = "README.md"
 license = { text = "MPL-2.0" }
