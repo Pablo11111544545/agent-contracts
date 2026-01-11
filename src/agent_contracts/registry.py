@@ -188,13 +188,28 @@ class NodeRegistry:
     # LLM Prompt Generation
     # =========================================================================
     
-    def build_llm_prompt(self, supervisor: str, state: dict) -> str:
+    def build_llm_prompt(
+        self,
+        supervisor: str,
+        state: dict,
+        context: str | None = None,
+    ) -> str:
         """Generate LLM prompt for Supervisor.
         
         Aggregates LLM hints from each node to build prompt.
+        Optionally includes context information for better decision-making.
+        
+        Args:
+            supervisor: Supervisor name
+            state: Current state (for future use)
+            context: Optional context string to include in prompt
+            
+        Returns:
+            Complete LLM prompt with instructions and context
         """
         lines = ["Choose the next action based on the current state:\n"]
         
+        # Add available actions
         for name in self.get_supervisor_nodes(supervisor):
             contract = self._contracts[name]
             hints = contract.get_llm_hints()
@@ -206,6 +221,13 @@ class NodeRegistry:
                 lines.append(f"- **{name}**: {contract.description}")
         
         lines.append("\n- **done**: Complete the current flow\n")
+        
+        # Add context if provided
+        if context:
+            lines.append("\n## Current Context\n")
+            lines.append(context)
+            lines.append("")
+        
         lines.append("Return only the action name.")
         
         return "\n".join(lines)

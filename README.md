@@ -88,6 +88,21 @@ graph TD
 3. **Build**: The **GraphBuilder** compiles the registry into a executable LangGraph.
 4. **Run**: The **Supervisor** dynamically routes traffic based on the contracts.
 
+### Smart Context Building
+
+The Supervisor automatically builds rich LLM context by:
+- **Base slices**: Always includes `request`, `response`, `_internal`
+- **Candidate-driven**: Analyzes candidate nodes' `reads` declarations
+- **Recursive summarization**: Uses `StateSummarizer` to preserve nested structure
+- **Efficient**: Provides only relevant state information with controlled depth
+- **Contract-driven**: No application-specific knowledge required
+
+The `StateSummarizer` intelligently handles complex nested data:
+- Preserves hierarchical structure (dicts in lists, lists in dicts)
+- Limits depth (default: 2 levels) and item counts (default: 3 dict items, 2 list items)
+- Shows total item counts for truncated collections
+- Prevents information loss from nested structures
+
 ---
 
 ## 🚀 Quick Start

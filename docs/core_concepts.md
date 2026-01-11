@@ -267,6 +267,78 @@ if result.has_errors:
 | **WARNING** | Unknown service, unreachable node |
 | **INFO** | Shared writers (multiple nodes write same slice) |
 
+
+---
+
+## StateSummarizer
+
+For intelligent state slice summarization with recursive structure preservation:
+
+```python
+from agent_contracts.utils import StateSummarizer, summarize_state_slice
+
+# Create summarizer with custom settings
+summarizer = StateSummarizer(
+    max_depth=2,          # Maximum recursion depth
+    max_dict_items=3,     # Max dict items per level
+    max_list_items=2,     # Max list items per level
+    max_str_length=50,    # Max string length
+)
+
+# Summarize complex nested data
+profile = {
+    "user_id": "user123",
+    "preferences": {
+        "style": "casual",
+        "colors": ["blue", "green", "red"],
+        "brands": ["Nike", "Adidas", "Puma", "Reebok"],
+    },
+    "history": [
+        {"item": "shirt", "date": "2024-01-01"},
+        {"item": "pants", "date": "2024-01-02"},
+    ]
+}
+
+summary = summarizer.summarize(profile)
+# Output: {'user_id': 'user123', 'preferences': {'style': 'casual', 
+#          'colors': [...] (3 items), 'brands': [...] (4 items)}, 
+#          'history': [{'item', 'date'} (2 items), ...] (2 items)}
+
+# Or use convenience function
+summary = summarize_state_slice(profile, max_depth=2)
+```
+
+### Key Features
+
+- **Recursive Traversal**: Preserves nested structure (dicts in lists, lists in dicts)
+- **Depth Limiting**: Prevents excessive nesting (default: 2 levels)
+- **Item Count Control**: Limits items shown per collection (default: 3 for dicts, 2 for lists)
+- **Structure Preservation**: Shows hierarchical relationships, not just keys
+- **Size Indicators**: Displays total item counts for truncated collections
+
+### Use Cases
+
+1. **LLM Context Building**: Provide rich context without overwhelming token budgets
+2. **Debugging**: Quick overview of complex state structures
+3. **Logging**: Concise representation of large data structures
+4. **API Responses**: Human-readable summaries of nested data
+
+### Integration with Supervisor
+
+`GenericSupervisor` automatically uses `StateSummarizer` for context building:
+
+```python
+supervisor = GenericSupervisor("shopping", llm=llm)
+# Internally uses StateSummarizer for _summarize_slice()
+decision = await supervisor.decide(state)
+```
+
+The supervisor's context now includes:
+- Nested structure visibility (not just top-level keys)
+- First few items from large collections
+- Total item counts for truncated data
+- Hierarchical relationships preserved
+
 ---
 
 ## Traceable Routing
@@ -292,6 +364,71 @@ for rule in decision.reason.matched_rules:
 | `rule_match` | TriggerCondition matched |
 | `llm_decision` | LLM made the choice |
 | `fallback` | No match, using default |
+
+
+## Supervisor Context Building
+
+The `GenericSupervisor` automatically builds rich context for LLM-based routing decisions by analyzing the contracts of candidate nodes.
+
+### How It Works
+
+When the Supervisor needs to make a routing decision:
+
+1. **Collect Base Slices**: Always includes `request`, `response`, `_internal`
+2. **Analyze Candidates**: Examines the `reads` field of each candidate node's contract
+3. **Merge Slices**: Combines base slices with candidate-specific slices
+4. **Summarize**: Converts each slice to a concise string representation
+5. **Provide to LLM**: Passes the enriched context for informed decision-making
+
+### Example
+
+```python
+# Node contracts
+node_a = NodeContract(
+    name="profile_analyzer",
+    reads=["request", "profile_card", "interview"],
+    ...
+)
+
+node_b = NodeContract(
+    name="search_handler",
+    reads=["request", "search_history"],
+    ...
+)
+
+# When both are candidates, Supervisor provides:
+# - request (base)
+# - response (base)
+# - _internal (base)
+# - profile_card (from node_a)
+# - interview (from node_a)
+# - search_history (from node_b)
+```
+
+### Benefits
+
+- **Contract-Driven**: No application-specific knowledge required
+- **Efficient**: Only includes relevant state information
+- **Automatic**: Works for any node without configuration
+- **Scalable**: Adapts as you add new nodes
+
+### Customization
+
+The context building is automatic, but you can influence it through:
+
+1. **Node Contracts**: Declare what your node reads
+2. **State Organization**: Keep slices focused and well-named
+3. **Slice Size**: Large slices are automatically truncated
+
+```python
+# The Supervisor will automatically include these slices
+# when this node is a candidate
+CONTRACT = NodeContract(
+    name="my_node",
+    reads=["request", "user_profile", "conversation_history"],
+    ...
+)
+```
 
 ---
 

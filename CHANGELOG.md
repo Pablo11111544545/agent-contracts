@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-01-11
+
+### Added
+
+- **StateSummarizer utility class**
+  - New `agent_contracts.utils.summarizer` module for intelligent state slice summarization
+  - Recursive summarization preserves nested structure while limiting size
+  - Configurable depth limiting (default: 2 levels)
+  - Configurable item count limiting for dicts and lists
+  - Handles complex nested structures (dicts in lists, lists in dicts, etc.)
+  - **Cycle detection**: Prevents infinite recursion on circular references using `id()`-based tracking
+  - Convenience function `summarize_state_slice()` for quick usage
+  - Comprehensive test suite with 22 test cases (including 7 cycle detection tests)
+
+### Improved
+
+- **GenericSupervisor context enrichment**
+  - LLM now receives richer context based on candidate nodes' contracts
+  - Automatically includes base slices (`request`, `response`, `_internal`)
+  - Dynamically adds slices that candidate nodes read from (via `NodeContract.reads`)
+  - Improves routing accuracy by providing relevant state information
+  - New methods: `_collect_context_slices()`, `_summarize_slice()`
+  - **Flexible summarizer configuration**: Accept `StateSummarizer` instance via constructor
+  - No breaking changes - internal implementation only
+  - Added 5 new test cases for context building verification
+
+- **GenericSupervisor context summarization**
+  - Now uses `StateSummarizer` for recursive state slice summarization
+  - Better preservation of nested data structure information
+  - Previously, nested lists and dicts lost all detail beyond first level
+  - Now shows hierarchical structure with controlled depth and item counts
+  - Improves LLM context quality without breaking existing functionality
+  - No API changes - internal implementation enhancement only
+
+- **Prompt structure improvement**
+  - `NodeRegistry.build_llm_prompt()` now accepts optional `context` parameter
+  - When context is provided, it's automatically integrated into the prompt template
+  - Cleaner separation of concerns: registry handles prompt structure, supervisor provides context
+  - Backward compatible: `context=None` by default
+  - Simplifies supervisor code by delegating prompt+context merging to registry
+
+- **Flexible StateSummarizer configuration**
+  - `GenericSupervisor.__init__()` now accepts optional `summarizer` parameter
+  - Pass a custom `StateSummarizer` instance for full control over summarization behavior
+  - If omitted, creates a default instance with sensible defaults
+  - Most flexible approach: allows complete customization while maintaining simplicity
+  - Backward compatible: `summarizer=None` by default
+
 ## [0.2.1] - 2026-01-09
 
 ### Improved
