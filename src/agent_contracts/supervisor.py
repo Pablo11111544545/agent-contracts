@@ -5,6 +5,7 @@ Registry trigger conditions and LLM.
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -15,7 +16,6 @@ from langchain_core.runnables import RunnableConfig
 from agent_contracts.registry import NodeRegistry, get_node_registry
 from agent_contracts.config import get_config
 from agent_contracts.utils.logging import get_logger
-from agent_contracts.utils.summarizer import StateSummarizer
 from agent_contracts.routing import MatchedRule, RoutingReason, RoutingDecision
 
 logger = get_logger("agent_contracts.supervisor")
@@ -45,7 +45,6 @@ class GenericSupervisor:
         registry: NodeRegistry | None = None,
         max_iterations: int | None = None,
         terminal_response_types: set[str] | None = None,
-        summarizer: StateSummarizer | None = None,
     ):
         """Initialize.
         
@@ -55,20 +54,11 @@ class GenericSupervisor:
             registry: Node registry (uses global if omitted)
             max_iterations: Max iterations (uses config if omitted)
             terminal_response_types: Terminal response types (uses config if omitted)
-            summarizer: StateSummarizer instance (creates default if omitted)
         """
         self.name = supervisor_name
         self.llm = llm
         self.registry = registry or get_node_registry()
         self.logger = logger
-        
-        # Initialize state summarizer for context building
-        self.summarizer = summarizer or StateSummarizer(
-            max_depth=5,
-            max_dict_items=5,
-            max_list_items=5,
-            max_str_length=400,
-        )
         
         # Load from config or use defaults
         config = get_config()
@@ -169,50 +159,26 @@ class GenericSupervisor:
         state: dict,
         rule_candidates: list[str],
     ) -> set[str]:
-        """Collect relevant state slices for LLM context.
+        """Collect minimal state slices for LLM routing decision.
         
-        Combines base slices (always needed) with slices that candidate nodes read.
-        This ensures LLM has sufficient context to make informed routing decisions.
+        Only includes slices directly needed for supervisor decision:
+        - request: Current user request (action, message, params, etc.)
+        - response: Previous response (helps LLM understand conversation flow)
+        - _internal: Internal state (iteration count, previous decision)
+        
+        Other slices (interview, profile_card, etc.) are already evaluated in
+        trigger conditions and don't need to be passed to LLM for routing.
+        This reduces token usage while maintaining conversation context.
         
         Args:
             state: Current state
-            rule_candidates: List of candidate node names
+            rule_candidates: List of candidate node names (unused but kept for API compatibility)
             
         Returns:
             Set of slice names to include in context
         """
-        # Base slices always needed for routing decisions
-        base_slices = {"request", "response", "_internal"}
-        
-        # Collect slices that candidate nodes read
-        candidate_slices = set()
-        for node_name in rule_candidates:
-            contract = self.registry.get_contract(node_name)
-            if contract:
-                candidate_slices.update(contract.reads)
-        
-        return base_slices | candidate_slices
+        return {"request", "response", "_internal"}
     
-    def _summarize_slice(self, slice_name: str, slice_data: Any) -> str:
-        """Summarize a state slice for LLM context using recursive summarization.
-        
-        Converts slice data to a concise string representation suitable for LLM.
-        Uses StateSummarizer for intelligent recursive summarization that preserves
-        structure while limiting size.
-        
-        Args:
-            slice_name: Name of the slice
-            slice_data: Slice data
-            
-        Returns:
-            String summary of the slice
-        """
-        if not slice_data:
-            return f"{slice_name}: (empty)"
-        
-        # Use StateSummarizer for recursive summarization
-        summary = self.summarizer.summarize(slice_data)
-        return f"{slice_name}: {summary}"
     
     def _format_rule_candidates_with_reasons(
         self,
@@ -270,21 +236,20 @@ class GenericSupervisor:
         """Decide using LLM with enriched context.
         
         Builds context from:
-        1. Base slices (request, response, _internal)
-        2. Slices that candidate nodes read (from their contracts)
-        3. Rule match reasons
-        4. Previous node suggestion
+        1. Base slices (request, response, _internal) - directly serialized as JSON
+        2. Rule match reasons
+        3. Previous node suggestion
         """
         try:
             # Collect relevant slices based on candidates
             context_slices = self._collect_context_slices(state, rule_candidates)
             
-            # Build state summary
+            # Build state summary using direct JSON serialization
             state_parts = []
             for slice_name in sorted(context_slices):
                 if slice_name in state:
-                    summary = self._summarize_slice(slice_name, state[slice_name])
-                    state_parts.append(summary)
+                    slice_json = json.dumps(state[slice_name], ensure_ascii=False, default=str)
+                    state_parts.append(f"{slice_name}: {slice_json}")
             
             state_summary = "\n".join(state_parts) if state_parts else "(no state)"
             
