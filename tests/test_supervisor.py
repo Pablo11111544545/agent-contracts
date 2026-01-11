@@ -261,3 +261,180 @@ class TestGenericSupervisor:
         assert result.selected_node == "when_not_node"
         assert result.reason.decision_type == "rule_match"
 
+    async def test_context_slices_collection(self, mock_registry):
+        """Test that context slices are collected from base + candidate reads."""
+        # Create contracts with different reads
+        contract1 = NodeContract(
+            name="node1",
+            description="Node 1",
+            reads=["request", "profile_card"],
+            writes=["response"],
+            supervisor="main",
+            trigger_conditions=[
+                TriggerCondition(when={"action": "analyze"}, priority=10)
+            ]
+        )
+        
+        contract2 = NodeContract(
+            name="node2",
+            description="Node 2",
+            reads=["request", "interview"],
+            writes=["response"],
+            supervisor="main",
+            trigger_conditions=[
+                TriggerCondition(when={"action": "interview"}, priority=9)
+            ]
+        )
+        
+        mock_registry.get_contract.side_effect = lambda name: {
+            "node1": contract1,
+            "node2": contract2,
+        }.get(name)
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=mock_registry
+        )
+        
+        # Test with node1 as candidate
+        slices = supervisor._collect_context_slices(
+            state={},
+            rule_candidates=["node1"]
+        )
+        
+        # Should include base slices + node1's reads
+        expected = {"request", "response", "_internal", "profile_card"}
+        assert slices == expected
+        
+        # Test with both nodes as candidates
+        slices = supervisor._collect_context_slices(
+            state={},
+            rule_candidates=["node1", "node2"]
+        )
+        
+        # Should include base slices + both nodes' reads
+        expected = {"request", "response", "_internal", "profile_card", "interview"}
+        assert slices == expected
+
+    async def test_summarize_slice_dict(self, mock_registry):
+        """Test slice summarization for dict data."""
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=mock_registry
+        )
+        
+        # Small dict
+        small_dict = {"key1": "value1", "key2": "value2"}
+        summary = supervisor._summarize_slice("test", small_dict)
+        assert "test:" in summary
+        assert "key1" in summary
+        
+        # Large dict (should be truncated)
+        large_dict = {f"key{i}": f"value{i}" * 50 for i in range(20)}
+        summary = supervisor._summarize_slice("test", large_dict)
+        assert "test:" in summary
+        assert "..." in summary or "key" in summary
+
+    async def test_summarize_slice_list(self, mock_registry):
+        """Test slice summarization for list data."""
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=mock_registry
+        )
+        
+        # Empty list
+        summary = supervisor._summarize_slice("test", [])
+        assert "test:" in summary
+        assert "[]" in summary or "(empty)" in summary
+        
+        # Small list
+        small_list = [1, 2, 3]
+        summary = supervisor._summarize_slice("test", small_list)
+        assert "test:" in summary
+        
+        # Large list (should show count)
+        large_list = list(range(100))
+        summary = supervisor._summarize_slice("test", large_list)
+        assert "test:" in summary
+        assert "items" in summary or "100" in summary
+
+    async def test_summarize_slice_empty(self, mock_registry):
+        """Test slice summarization for empty data."""
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=mock_registry
+        )
+        
+        summary = supervisor._summarize_slice("test", None)
+        assert "test: (empty)" in summary
+        
+        summary = supervisor._summarize_slice("test", {})
+        assert "test: (empty)" in summary
+
+    async def test_llm_receives_enriched_context(self, mock_registry, mock_llm):
+        """Test that LLM receives enriched context with candidate slices."""
+        # Create contract with specific reads
+        contract = NodeContract(
+            name="analyzer",
+            description="Analyzer node",
+            reads=["request", "profile_card", "interview"],
+            writes=["response"],
+            supervisor="main",
+            trigger_conditions=[
+                TriggerCondition(when={"action": "analyze"}, priority=10)
+            ]
+        )
+        
+        mock_registry.get_contract.side_effect = lambda name: contract if name == "analyzer" else None
+        mock_registry.evaluate_triggers.return_value = [(10, "analyzer")]
+        # Use a callable that includes context in the prompt
+        def build_prompt_with_context(supervisor, state, context=None):
+            prompt = "Choose next action"
+            if context:
+                prompt += f"\n\n## Current Context\n{context}\n"
+            return prompt
+        mock_registry.build_llm_prompt.side_effect = build_prompt_with_context
+        mock_registry.get_supervisor_nodes.return_value = ["analyzer"]
+        
+        from agent_contracts.supervisor import SupervisorDecision
+        mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
+            return_value=SupervisorDecision(
+                next_node="analyzer",
+                reasoning="Analyzing user profile"
+            )
+        )
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=mock_llm,
+            registry=mock_registry
+        )
+        
+        state = {
+            "request": {"action": "analyze", "message": "test"},
+            "response": {"content": "previous response"},
+            "_internal": {"main_iteration": 0},
+            "profile_card": {"preferences": {"style": "casual"}},
+            "interview": {"questions": []}
+        }
+        
+        result = await supervisor.decide(state)
+        
+        # Verify LLM was called
+        assert mock_llm.with_structured_output.return_value.ainvoke.called
+        
+        # Get the prompt that was passed to LLM
+        call_args = mock_llm.with_structured_output.return_value.ainvoke.call_args
+        prompt = call_args[0][0]
+        
+        # Verify enriched context includes candidate slices
+        assert "request:" in prompt
+        assert "profile_card:" in prompt
+        assert "interview:" in prompt
+        
+        assert result.next_node == "analyzer"
+

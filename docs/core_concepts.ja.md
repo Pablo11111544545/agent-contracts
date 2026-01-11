@@ -267,6 +267,78 @@ if result.has_errors:
 | **WARNING** | 不明なサービス、到達不能ノード |
 | **INFO** | 共有ライター（複数ノードが同じスライスに書き込み） |
 
+
+---
+
+## StateSummarizer
+
+再帰的な構造保持を伴うインテリジェントなステートスライス要約：
+
+```python
+from agent_contracts.utils import StateSummarizer, summarize_state_slice
+
+# カスタム設定でサマライザーを作成
+summarizer = StateSummarizer(
+    max_depth=2,          # 最大再帰深度
+    max_dict_items=3,     # レベルごとの最大辞書項目数
+    max_list_items=2,     # レベルごとの最大リスト項目数
+    max_str_length=50,    # 最大文字列長
+)
+
+# 複雑なネストデータを要約
+profile = {
+    "user_id": "user123",
+    "preferences": {
+        "style": "casual",
+        "colors": ["blue", "green", "red"],
+        "brands": ["Nike", "Adidas", "Puma", "Reebok"],
+    },
+    "history": [
+        {"item": "shirt", "date": "2024-01-01"},
+        {"item": "pants", "date": "2024-01-02"},
+    ]
+}
+
+summary = summarizer.summarize(profile)
+# 出力: {'user_id': 'user123', 'preferences': {'style': 'casual', 
+#        'colors': [...] (3 items), 'brands': [...] (4 items)}, 
+#        'history': [{'item', 'date'} (2 items), ...] (2 items)}
+
+# または便利関数を使用
+summary = summarize_state_slice(profile, max_depth=2)
+```
+
+### 主な機能
+
+- **再帰的トラバーサル**: ネスト構造を保持（リスト内の辞書、辞書内のリストなど）
+- **深度制限**: 過度なネストを防止（デフォルト: 2レベル）
+- **項目数制御**: コレクションごとに表示する項目数を制限（デフォルト: 辞書3個、リスト2個）
+- **構造保持**: キーだけでなく階層関係を表示
+- **サイズ表示**: 切り詰められたコレクションの総項目数を表示
+
+### ユースケース
+
+1. **LLMコンテキスト構築**: トークン予算を圧迫せずにリッチなコンテキストを提供
+2. **デバッグ**: 複雑なステート構造の概要を素早く把握
+3. **ロギング**: 大規模データ構造の簡潔な表現
+4. **APIレスポンス**: ネストデータの人間が読みやすい要約
+
+### Supervisorとの統合
+
+`GenericSupervisor`は自動的に`StateSummarizer`をコンテキスト構築に使用：
+
+```python
+supervisor = GenericSupervisor("shopping", llm=llm)
+# 内部的に_summarize_slice()でStateSummarizerを使用
+decision = await supervisor.decide(state)
+```
+
+Supervisorのコンテキストには以下が含まれるようになりました：
+- ネスト構造の可視性（トップレベルのキーだけでなく）
+- 大規模コレクションの最初の数項目
+- 切り詰められたデータの総項目数
+- 階層関係の保持
+
 ---
 
 ## トレーサブルルーティング
@@ -292,6 +364,71 @@ for rule in decision.reason.matched_rules:
 | `rule_match` | TriggerConditionがマッチ |
 | `llm_decision` | LLMが選択 |
 | `fallback` | マッチなし、デフォルトを使用 |
+
+
+## Supervisorのコンテキスト構築
+
+`GenericSupervisor`は、候補ノードのContractを分析することで、LLMベースのルーティング判断のための豊富なコンテキストを自動的に構築します。
+
+### 仕組み
+
+Supervisorがルーティング判断を行う際：
+
+1. **基本スライスの収集**: 常に`request`、`response`、`_internal`を含む
+2. **候補の分析**: 各候補ノードのContractの`reads`フィールドを調査
+3. **スライスのマージ**: 基本スライスと候補固有のスライスを結合
+4. **要約**: 各スライスを簡潔な文字列表現に変換
+5. **LLMへの提供**: 充実したコンテキストを渡して情報に基づいた判断を可能に
+
+### 例
+
+```python
+# ノードのContract
+node_a = NodeContract(
+    name="profile_analyzer",
+    reads=["request", "profile_card", "interview"],
+    ...
+)
+
+node_b = NodeContract(
+    name="search_handler",
+    reads=["request", "search_history"],
+    ...
+)
+
+# 両方が候補の場合、Supervisorは以下を提供：
+# - request (基本)
+# - response (基本)
+# - _internal (基本)
+# - profile_card (node_aから)
+# - interview (node_aから)
+# - search_history (node_bから)
+```
+
+### メリット
+
+- **Contract駆動**: アプリケーション固有の知識は不要
+- **効率的**: 関連する状態情報のみを含む
+- **自動**: 設定なしであらゆるノードで動作
+- **スケーラブル**: 新しいノードを追加しても自動対応
+
+### カスタマイズ
+
+コンテキスト構築は自動ですが、以下を通じて影響を与えることができます：
+
+1. **ノードのContract**: ノードが読み取るものを宣言
+2. **状態の整理**: スライスを焦点を絞って適切に命名
+3. **スライスのサイズ**: 大きなスライスは自動的に切り詰められる
+
+```python
+# このノードが候補の場合、Supervisorは自動的に
+# これらのスライスを含めます
+CONTRACT = NodeContract(
+    name="my_node",
+    reads=["request", "user_profile", "conversation_history"],
+    ...
+)
+```
 
 ---
 
