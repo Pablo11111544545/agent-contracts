@@ -450,15 +450,38 @@ class ContractVisualizer:
             sorted_nodes = sorted(nodes, key=get_max_priority, reverse=True)
             
             for name, contract in sorted_nodes:
-                priority = get_max_priority((name, contract))
-                priority_icon = self._get_priority_icon(priority)
-                
-                # Get condition summary
-                condition = self._summarize_conditions(contract.trigger_conditions)
-                hint = contract.get_llm_hints()[0] if contract.get_llm_hints() else "-"
-                
-                priority_str = f"{priority_icon} **{priority}**" if priority >= 0 else "🟢 _(default)_"
-                lines.append(f"| {priority_str} | `{name}` | {condition} | {hint} |")
+                if not contract.trigger_conditions:
+                    # No trigger conditions - default node
+                    lines.append(f"| 🟢 _(default)_ | `{name}` | _(default)_ | - |")
+                else:
+                    # Sort conditions by priority (highest first)
+                    sorted_conditions = sorted(
+                        contract.trigger_conditions,
+                        key=lambda c: c.priority,
+                        reverse=True
+                    )
+                    
+                    # First condition: show node name
+                    first_cond = sorted_conditions[0]
+                    priority_icon = self._get_priority_icon(first_cond.priority)
+                    condition_str = self._format_single_condition(first_cond)
+                    hint = first_cond.llm_hint or "-"
+                    
+                    lines.append(
+                        f"| {priority_icon} **{first_cond.priority}** | "
+                        f"`{name}` | {condition_str} | {hint} |"
+                    )
+                    
+                    # Remaining conditions: use continuation symbol
+                    for cond in sorted_conditions[1:]:
+                        priority_icon = self._get_priority_icon(cond.priority)
+                        condition_str = self._format_single_condition(cond)
+                        hint = cond.llm_hint or "-"
+                        
+                        lines.append(
+                            f"| {priority_icon} **{cond.priority}** | "
+                            f"↳ | {condition_str} | {hint} |"
+                        )
             
             # Add Mermaid diagram for this supervisor
             lines.extend([
@@ -474,14 +497,35 @@ class ContractVisualizer:
             
             prev_node = None
             for name, contract in sorted_nodes:
-                priority = get_max_priority((name, contract))
-                priority_icon = self._get_priority_icon(priority)
-                safe_name = self._safe_id(name)
-                lines.append(f'        {safe_name}["{priority_icon} P{priority}: {name}"]')
-                
-                if prev_node:
-                    lines.append(f'        {prev_node} -->|"not matched"| {safe_name}')
-                prev_node = safe_name
+                if not contract.trigger_conditions:
+                    # Default node
+                    safe_name = self._safe_id(name)
+                    lines.append(f'        {safe_name}["🟢 P-1: {name}"]')
+                    if prev_node:
+                        lines.append(f'        {prev_node} -->|"not matched"| {safe_name}')
+                    prev_node = safe_name
+                else:
+                    # Node with multiple conditions - show all in diagram
+                    sorted_conditions = sorted(
+                        contract.trigger_conditions,
+                        key=lambda c: c.priority,
+                        reverse=True
+                    )
+                    
+                    for idx, cond in enumerate(sorted_conditions):
+                        priority_icon = self._get_priority_icon(cond.priority)
+                        safe_name = self._safe_id(f"{name}_cond{idx}")
+                        condition_label = self._format_single_condition(cond)
+                        # Escape quotes and use <br/> for line break
+                        condition_label = condition_label.replace('"', "'")
+                        node_label = f"{priority_icon} P{cond.priority}: {name}"
+                        if len(sorted_conditions) > 1:
+                            node_label += f" [{idx+1}/{len(sorted_conditions)}]"
+                        lines.append(f'        {safe_name}["{node_label}<br/>{condition_label}"]')
+                        
+                        if prev_node:
+                            lines.append(f'        {prev_node} -->|"not matched"| {safe_name}')
+                        prev_node = safe_name
             
             lines.extend([
                 "    end",
@@ -503,23 +547,47 @@ class ContractVisualizer:
         else:
             return "⚪"
     
+    def _format_single_condition(self, condition: "TriggerCondition") -> str:
+        """Format a single trigger condition for display.
+        
+        Args:
+            condition: The trigger condition to format
+            
+        Returns:
+            Formatted condition string
+        """
+        if not condition.when and not condition.when_not:
+            return "_(always)_"
+        
+        parts = []
+        if condition.when:
+            for key, value in list(condition.when.items())[:2]:
+                parts.append(f"`{key}={value}`")
+        if condition.when_not:
+            for key, value in list(condition.when_not.items())[:1]:
+                parts.append(f"`{key}≠{value}`")
+        
+        result = ", ".join(parts) if parts else "_(always)_"
+        
+        # Show count if truncated
+        total_items = len(condition.when or {}) + len(condition.when_not or {})
+        if total_items > 3:
+            result += f" _(+{total_items - 3} more)_"
+        
+        return result
+    
     def _summarize_conditions(self, conditions: list["TriggerCondition"]) -> str:
-        """Summarize trigger conditions for display."""
+        """Summarize trigger conditions for display.
+        
+        DEPRECATED: Use _format_single_condition() for individual conditions.
+        This method only returns the highest priority condition.
+        """
         if not conditions:
             return "_(default)_"
         
         # Get highest priority condition
         highest = max(conditions, key=lambda c: c.priority)
-        
-        parts = []
-        if highest.when:
-            for key, value in list(highest.when.items())[:2]:
-                parts.append(f"`{key}={value}`")
-        if highest.when_not:
-            for key, value in list(highest.when_not.items())[:1]:
-                parts.append(f"`{key}≠{value}`")
-        
-        return ", ".join(parts) if parts else "_(always)_"
+        return self._format_single_condition(highest)
     
     # =========================================================================
     # Nodes Reference
