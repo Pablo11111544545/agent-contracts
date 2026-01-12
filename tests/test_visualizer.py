@@ -420,6 +420,167 @@ class TestDetailedDependencies:
         icon = visualizer._get_node_icon(contract)
         assert icon == "🃏"
 
+
+class TestMultipleTriggerConditions:
+    """Tests for nodes with multiple trigger conditions."""
+    
+    def test_multiple_triggers_display_all_conditions(self):
+        """Test that all trigger conditions are displayed for a node."""
+        class MultiTriggerNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="multi_trigger",
+                description="Multiple triggers",
+                reads=["request"],
+                writes=["response"],
+                supervisor="main",
+                trigger_conditions=[
+                    TriggerCondition(
+                        priority=100,
+                        when={"request.action": "like"},
+                        llm_hint="Handle LIKE action"
+                    ),
+                    TriggerCondition(
+                        priority=90,
+                        when={"request.action": "dislike"},
+                        llm_hint="Handle DISLIKE action"
+                    ),
+                    TriggerCondition(
+                        priority=80,
+                        when={"request.action": "skip"},
+                        llm_hint="Handle SKIP action"
+                    ),
+                ]
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        registry = NodeRegistry()
+        registry.register(MultiTriggerNode)
+        viz = ContractVisualizer(registry)
+        
+        section = viz.generate_trigger_hierarchy()
+        
+        # Check that node name appears once
+        assert section.count("`multi_trigger`") == 1
+        
+        # Check that continuation symbol appears for additional conditions
+        assert section.count("↳") == 2
+        
+        # Check all conditions are visible
+        assert "request.action=like" in section or "action=like" in section
+        assert "request.action=dislike" in section or "action=dislike" in section
+        assert "request.action=skip" in section or "action=skip" in section
+        
+        # Check all priorities are shown
+        assert "**100**" in section
+        assert "**90**" in section
+        assert "**80**" in section
+        
+        # Check all hints are shown
+        assert "Handle LIKE action" in section
+        assert "Handle DISLIKE action" in section
+        assert "Handle SKIP action" in section
+    
+    def test_multiple_triggers_in_mermaid_diagram(self):
+        """Test that Mermaid diagram shows all trigger conditions."""
+        class MultiTriggerNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="multi_trigger",
+                description="Multiple triggers",
+                reads=[], writes=[],
+                supervisor="main",
+                trigger_conditions=[
+                    TriggerCondition(priority=100, when={"action": "a"}),
+                    TriggerCondition(priority=90, when={"action": "b"}),
+                ]
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        registry = NodeRegistry()
+        registry.register(MultiTriggerNode)
+        viz = ContractVisualizer(registry)
+        
+        section = viz.generate_trigger_hierarchy()
+        
+        # Check Mermaid diagram contains multiple condition nodes
+        assert "multi_trigger_cond0" in section
+        assert "multi_trigger_cond1" in section
+        
+        # Check priorities in diagram
+        assert "P100" in section
+        assert "P90" in section
+        
+        # Check condition counter [1/2], [2/2]
+        assert "[1/2]" in section
+        assert "[2/2]" in section
+    
+    def test_single_trigger_no_continuation_symbol(self):
+        """Test that single trigger condition doesn't show continuation symbol."""
+        class SingleTriggerNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="single_trigger",
+                description="Single trigger",
+                reads=[], writes=[],
+                supervisor="main",
+                trigger_conditions=[
+                    TriggerCondition(priority=50, when={"action": "test"}),
+                ]
+            )
+            async def execute(self, inputs): return NodeOutputs()
+        
+        registry = NodeRegistry()
+        registry.register(SingleTriggerNode)
+        viz = ContractVisualizer(registry)
+        
+        section = viz.generate_trigger_hierarchy()
+        
+        # Should not have continuation symbol
+        assert "↳" not in section
+        
+        # Should show the node name normally
+        assert "`single_trigger`" in section
+        assert "**50**" in section
+    
+    def test_format_single_condition_truncation(self, visualizer: ContractVisualizer):
+        """Test that _format_single_condition truncates long conditions."""
+        # Create a condition with many fields
+        condition = TriggerCondition(
+            priority=50,
+            when={
+                "field1": "value1",
+                "field2": "value2",
+                "field3": "value3",
+                "field4": "value4",
+            },
+            when_not={"field5": "value5"}
+        )
+        
+        result = visualizer._format_single_condition(condition)
+        
+        # Should show truncation indicator
+        assert "more" in result
+        
+        # Should show at least some fields
+        assert "field1" in result or "field2" in result
+    
+    def test_format_single_condition_always(self, visualizer: ContractVisualizer):
+        """Test formatting condition with no when/when_not."""
+        condition = TriggerCondition(priority=50)
+        result = visualizer._format_single_condition(condition)
+        assert result == "_(always)_"
+    
+    def test_format_single_condition_with_when_not(self, visualizer: ContractVisualizer):
+        """Test formatting condition with when_not."""
+        condition = TriggerCondition(
+            priority=50,
+            when={"action": "test"},
+            when_not={"done": True}
+        )
+        result = visualizer._format_single_condition(condition)
+        
+        assert "action=test" in result or "action='test'" in result
+        assert "done≠True" in result or "done≠" in result
+
+
 class TestVisualizerEdgeCases:
     """Test edge cases and defensive code paths in visualizer."""
     
