@@ -370,64 +370,103 @@ for rule in decision.reason.matched_rules:
 
 `GenericSupervisor`は、候補ノードのContractを分析することで、LLMベースのルーティング判断のための豊富なコンテキストを自動的に構築します。
 
-### 仕組み
+### デフォルトのコンテキスト構築
 
-Supervisorがルーティング判断を行う際：
+デフォルトでは、SupervisorはLLMに最小限のコンテキストを提供します：
 
-1. **基本スライスの収集**: 常に`request`、`response`、`_internal`を含む
-2. **候補の分析**: 各候補ノードのContractの`reads`フィールドを調査
-3. **スライスのマージ**: 基本スライスと候補固有のスライスを結合
-4. **要約**: 各スライスを簡潔な文字列表現に変換
-5. **LLMへの提供**: 充実したコンテキストを渡して情報に基づいた判断を可能に
+1. **基本スライス**: 常に`request`、`response`、`_internal`を含む
+2. **根拠**: これらのスライスにはルーティング判断に必要な基本情報が含まれる
+3. **効率性**: 判断品質を維持しながらトークン使用量を低く抑える
 
-### 例
+### カスタムコンテキストビルダー（v0.3.0+）
+
+追加のコンテキストが必要な複雑なシナリオでは、カスタム`context_builder`関数を提供できます：
 
 ```python
-# ノードのContract
-node_a = NodeContract(
-    name="profile_analyzer",
-    reads=["request", "profile_card", "interview"],
-    ...
-)
+from agent_contracts import GenericSupervisor
 
-node_b = NodeContract(
-    name="search_handler",
-    reads=["request", "search_history"],
-    ...
-)
+def my_context_builder(state: dict, candidates: list[str]) -> dict:
+    """ルーティング判断用のカスタムコンテキストを構築"""
+    return {
+        "slices": {"request", "response", "_internal", "conversation"},
+        "summary": {
+            "total_turns": len(state.get("conversation", {}).get("messages", [])),
+            "readiness_score": calculate_readiness(state),
+        }
+    }
 
-# 両方が候補の場合、Supervisorは以下を提供：
-# - request (基本)
-# - response (基本)
-# - _internal (基本)
-# - profile_card (node_aから)
-# - interview (node_aから)
-# - search_history (node_bから)
+supervisor = GenericSupervisor(
+    supervisor_name="shopping",
+    llm=llm,
+    context_builder=my_context_builder,
+)
+```
+
+### コンテキストビルダープロトコル
+
+```python
+from typing import Protocol
+
+class ContextBuilder(Protocol):
+    def __call__(self, state: dict, candidates: list[str]) -> dict:
+        """
+        LLMルーティング判断用のコンテキストを構築
+        
+        Args:
+            state: 現在のエージェント状態
+            candidates: 候補ノード名のリスト
+            
+        Returns:
+            以下を含む辞書:
+            - slices: 含めるスライス名のセット
+            - summary: 集約情報を含むオプションの辞書
+        """
+        ...
+```
+
+### ユースケース
+
+| シナリオ | カスタムコンテキスト |
+|----------|---------------------|
+| **ECサイト** | 購入認識ルーティングのために`cart`、`inventory`を含める |
+| **カスタマーサポート** | コンテキスト認識レスポンスのために`ticket_history`、`sentiment`を含める |
+| **教育** | 適応型指導のために`learning_progress`、`pace`を含める |
+| **会話** | ターン数と履歴を含む`conversation`を含める |
+
+### 例: 会話認識ルーティング
+
+```python
+def conversation_context_builder(state: dict, candidates: list[str]) -> dict:
+    """より良いルーティングのために会話履歴を含める"""
+    messages = state.get("conversation", {}).get("messages", [])
+    
+    return {
+        "slices": {"request", "response", "_internal", "conversation"},
+        "summary": {
+            "total_turns": len(messages),
+            "last_topic": extract_topic(messages[-1]) if messages else None,
+            "user_satisfaction": calculate_satisfaction(messages),
+        }
+    }
 ```
 
 ### メリット
 
-- **Contract駆動**: アプリケーション固有の知識は不要
-- **効率的**: 関連する状態情報のみを含む
-- **自動**: 設定なしであらゆるノードで動作
-- **スケーラブル**: 新しいノードを追加しても自動対応
+- **柔軟性**: アプリケーションドメインごとにコンテキストをカスタマイズ
+- **後方互換性**: 提供されない場合は既存の動作をデフォルトで使用
+- **型安全**: プロトコルが正しい実装を保証
+- **効率的**: LLMに送信されるコンテキストを正確に制御
 
-### カスタマイズ
+### v0.2.xからの移行
 
-コンテキスト構築は自動ですが、以下を通じて影響を与えることができます：
-
-1. **ノードのContract**: ノードが読み取るものを宣言
-2. **状態の整理**: スライスを焦点を絞って適切に命名
-3. **スライスのサイズ**: 大きなスライスは自動的に切り詰められる
+移行は不要 - v0.3.0は完全に後方互換性があります：
 
 ```python
-# このノードが候補の場合、Supervisorは自動的に
-# これらのスライスを含めます
-CONTRACT = NodeContract(
-    name="my_node",
-    reads=["request", "user_profile", "conversation_history"],
-    ...
-)
+# v0.2.x - v0.3.0でも引き続き動作
+supervisor = GenericSupervisor("main", llm=llm)
+
+# v0.3.0 - オプションのコンテキストビルダー
+supervisor = GenericSupervisor("main", llm=llm, context_builder=my_builder)
 ```
 
 ---

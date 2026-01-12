@@ -6,7 +6,7 @@ Registry trigger conditions and LLM.
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,48 @@ class SupervisorDecision(BaseModel):
     reasoning: str = Field(default="", description="Decision reasoning")
 
 
+class ContextBuilder(Protocol):
+    """Supervisor用のコンテキスト構築プロトコル。
+    
+    Allows customization of which state slices and additional context
+    are passed to LLM for routing decisions.
+    
+    Example:
+        def my_context_builder(state: dict, candidates: list[str]) -> dict:
+            return {
+                "slices": {"request", "response", "_internal", "conversation"},
+                "summary": {
+                    "total_turns": len(state.get("conversation", {}).get("messages", [])),
+                    "readiness": 0.67,
+                }
+            }
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="shopping",
+            llm=llm,
+            context_builder=my_context_builder,
+        )
+    """
+    
+    def __call__(
+        self,
+        state: dict,
+        candidates: list[str],
+    ) -> dict:
+        """Build context for LLM routing decision.
+        
+        Args:
+            state: Current agent state
+            candidates: List of candidate node names from trigger evaluation
+            
+        Returns:
+            Dictionary with:
+                - "slices" (set[str]): Set of slice names to include in LLM context
+                - "summary" (dict | None): Optional additional context summary
+        """
+        ...
+
+
 class GenericSupervisor:
     """Generic Supervisor.
     
@@ -45,6 +87,7 @@ class GenericSupervisor:
         registry: NodeRegistry | None = None,
         max_iterations: int | None = None,
         terminal_response_types: set[str] | None = None,
+        context_builder: ContextBuilder | None = None,
     ):
         """Initialize.
         
@@ -54,11 +97,16 @@ class GenericSupervisor:
             registry: Node registry (uses global if omitted)
             max_iterations: Max iterations (uses config if omitted)
             terminal_response_types: Terminal response types (uses config if omitted)
+            context_builder: Custom context builder for LLM routing (optional).
+                If provided, allows customization of which state slices and
+                additional context are passed to LLM for routing decisions.
+                If omitted, uses default behavior (request, response, _internal only).
         """
         self.name = supervisor_name
         self.llm = llm
         self.registry = registry or get_node_registry()
         self.logger = logger
+        self.context_builder = context_builder
         
         # Load from config or use defaults
         config = get_config()
@@ -159,24 +207,23 @@ class GenericSupervisor:
         state: dict,
         rule_candidates: list[str],
     ) -> set[str]:
-        """Collect minimal state slices for LLM routing decision.
+        """Collect state slices for LLM routing decision.
         
-        Only includes slices directly needed for supervisor decision:
-        - request: Current user request (action, message, params, etc.)
-        - response: Previous response (helps LLM understand conversation flow)
-        - _internal: Internal state (iteration count, previous decision)
-        
-        Other slices (interview, profile_card, etc.) are already evaluated in
-        trigger conditions and don't need to be passed to LLM for routing.
-        This reduces token usage while maintaining conversation context.
+        If a custom context_builder is provided, uses it to determine which
+        slices to include. Otherwise, uses minimal default context.
         
         Args:
             state: Current state
-            rule_candidates: List of candidate node names (unused but kept for API compatibility)
+            rule_candidates: List of candidate node names from trigger evaluation
             
         Returns:
-            Set of slice names to include in context
+            Set of slice names to include in LLM context
         """
+        if self.context_builder:
+            result = self.context_builder(state, rule_candidates)
+            return result.get("slices", {"request", "response", "_internal"})
+        
+        # Default behavior (backward compatible)
         return {"request", "response", "_internal"}
     
     
@@ -253,6 +300,14 @@ class GenericSupervisor:
             
             state_summary = "\n".join(state_parts) if state_parts else "(no state)"
             
+            # Get additional context from context_builder
+            additional_context = ""
+            if self.context_builder:
+                result = self.context_builder(state, rule_candidates)
+                if result.get("summary"):
+                    summary_json = json.dumps(result["summary"], ensure_ascii=False, default=str)
+                    additional_context = f"\n\nAdditional Context:\n{summary_json}"
+            
             # Format candidates with match reasons
             candidates_with_reasons = self._format_rule_candidates_with_reasons(
                 matches, rule_candidates
@@ -261,7 +316,7 @@ class GenericSupervisor:
             # Build full context
             context = f"""
 Current State:
-{state_summary}
+{state_summary}{additional_context}
 
 High priority system rules suggest:
 {candidates_with_reasons}
