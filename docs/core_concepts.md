@@ -270,77 +270,6 @@ if result.has_errors:
 
 ---
 
-## StateSummarizer
-
-For intelligent state slice summarization with recursive structure preservation:
-
-```python
-from agent_contracts.utils import StateSummarizer, summarize_state_slice
-
-# Create summarizer with custom settings
-summarizer = StateSummarizer(
-    max_depth=2,          # Maximum recursion depth
-    max_dict_items=3,     # Max dict items per level
-    max_list_items=2,     # Max list items per level
-    max_str_length=50,    # Max string length
-)
-
-# Summarize complex nested data
-profile = {
-    "user_id": "user123",
-    "preferences": {
-        "style": "casual",
-        "colors": ["blue", "green", "red"],
-        "brands": ["Nike", "Adidas", "Puma", "Reebok"],
-    },
-    "history": [
-        {"item": "shirt", "date": "2024-01-01"},
-        {"item": "pants", "date": "2024-01-02"},
-    ]
-}
-
-summary = summarizer.summarize(profile)
-# Output: {'user_id': 'user123', 'preferences': {'style': 'casual', 
-#          'colors': [...] (3 items), 'brands': [...] (4 items)}, 
-#          'history': [{'item', 'date'} (2 items), ...] (2 items)}
-
-# Or use convenience function
-summary = summarize_state_slice(profile, max_depth=2)
-```
-
-### Key Features
-
-- **Recursive Traversal**: Preserves nested structure (dicts in lists, lists in dicts)
-- **Depth Limiting**: Prevents excessive nesting (default: 2 levels)
-- **Item Count Control**: Limits items shown per collection (default: 3 for dicts, 2 for lists)
-- **Structure Preservation**: Shows hierarchical relationships, not just keys
-- **Size Indicators**: Displays total item counts for truncated collections
-
-### Use Cases
-
-1. **LLM Context Building**: Provide rich context without overwhelming token budgets
-2. **Debugging**: Quick overview of complex state structures
-3. **Logging**: Concise representation of large data structures
-4. **API Responses**: Human-readable summaries of nested data
-
-### Integration with Supervisor
-
-`GenericSupervisor` automatically uses `StateSummarizer` for context building:
-
-```python
-supervisor = GenericSupervisor("shopping", llm=llm)
-# Internally uses StateSummarizer for _summarize_slice()
-decision = await supervisor.decide(state)
-```
-
-The supervisor's context now includes:
-- Nested structure visibility (not just top-level keys)
-- First few items from large collections
-- Total item counts for truncated data
-- Hierarchical relationships preserved
-
----
-
 ## Traceable Routing
 
 For debugging, use `decide_with_trace()`:
@@ -368,15 +297,21 @@ for rule in decision.reason.matched_rules:
 
 ## Supervisor Context Building
 
-The `GenericSupervisor` automatically builds rich context for LLM-based routing decisions by analyzing the contracts of candidate nodes.
+The `GenericSupervisor` automatically builds context for LLM-based routing decisions.
 
-### Default Context Building
+### Default Context Building (v0.2.3+)
 
-By default, the Supervisor provides minimal context to the LLM:
+By default, the Supervisor provides **minimal context** to the LLM:
 
-1. **Base Slices**: Always includes `request`, `response`, `_internal`
-2. **Rationale**: These slices contain the essential information for routing decisions
-3. **Efficiency**: Keeps token usage low while maintaining decision quality
+1. **Base Slices Only**: Always includes `request`, `response`, `_internal`
+2. **Rationale**:
+   - Candidate slices are already evaluated in trigger conditions
+   - Passing them to LLM is redundant and wastes tokens
+   - Clear separation: Triggers = rule-based filtering, LLM = final selection
+3. **Benefits**:
+   - Significant token reduction
+   - Better performance (less data to serialize and transmit)
+   - Maintains conversation context via `response` for LLM understanding
 
 ### Custom Context Builder (v0.3.0+)
 
@@ -402,6 +337,56 @@ supervisor = GenericSupervisor(
 )
 ```
 
+### Summary Format (v0.3.1+)
+
+The `summary` field in `context_builder` return value supports both `dict` and `str` formats:
+
+```python
+# String format - directly included in prompt (ideal for formatted text)
+def context_builder(state, candidates):
+    return {
+        "slices": {"request", "response", "conversation"},
+        "summary": f"Recent conversation:\n{format_messages(state)}"
+    }
+
+# Dict format - JSON-serialized before inclusion (preserves structure)
+def context_builder(state, candidates):
+    return {
+        "slices": {"request", "response", "conversation"},
+        "summary": {
+            "turn_count": 5,
+            "topics": ["shopping", "preferences"]
+        }
+    }
+```
+
+### Using with Registry-Based Graph (v0.3.1+)
+
+When using `build_graph_from_registry()` with `llm_provider`, use `supervisor_factory` to inject custom supervisors:
+
+```python
+from agent_contracts import build_graph_from_registry, GenericSupervisor
+
+def my_context_builder(state, candidates):
+    return {
+        "slices": {"request", "response", "conversation"},
+        "summary": f"Conversation history:\n{format_history(state)}"
+    }
+
+def supervisor_factory(name: str, llm):
+    return GenericSupervisor(
+        supervisor_name=name,
+        llm=llm,
+        context_builder=my_context_builder,  # Custom context preserved!
+    )
+
+graph = build_graph_from_registry(
+    llm_provider=get_llm,
+    supervisor_factory=supervisor_factory,  # Inject custom supervisors
+    supervisors=["card", "shopping"],
+)
+```
+
 ### Context Builder Protocol
 
 ```python
@@ -418,8 +403,10 @@ class ContextBuilder(Protocol):
             
         Returns:
             Dictionary with:
-            - slices: Set of slice names to include
-            - summary: Optional dict with aggregated information
+            - slices (set[str]): Set of slice names to include
+            - summary (dict | str | None): Optional additional context
+              - str: Directly included in prompt (formatted text)
+              - dict: JSON-serialized before inclusion
         """
         ...
 ```
@@ -440,34 +427,30 @@ def conversation_context_builder(state: dict, candidates: list[str]) -> dict:
     """Include conversation history for better routing."""
     messages = state.get("conversation", {}).get("messages", [])
     
+    # Format as string for better LLM readability
+    formatted = "\n".join([
+        f"{m['role']}: {m['content']}"
+        for m in messages[-5:]  # Last 5 messages
+    ])
+    
     return {
         "slices": {"request", "response", "_internal", "conversation"},
-        "summary": {
-            "total_turns": len(messages),
-            "last_topic": extract_topic(messages[-1]) if messages else None,
-            "user_satisfaction": calculate_satisfaction(messages),
-        }
+        "summary": f"Recent conversation ({len(messages)} turns):\n{formatted}"
     }
 ```
 
 ### Benefits
 
 - **Flexible**: Customize context per application domain
-- **Backward Compatible**: Defaults to existing behavior when not provided
+- **Backward Compatible**: Defaults to minimal context when not provided
 - **Type-Safe**: Protocol ensures correct implementation
 - **Efficient**: Control exactly what context is sent to LLM
+- **Format Support**: String for formatted text, dict for structured data
 
-### Migration from v0.2.x
+### Migration Notes
 
-No migration needed - v0.3.0 is fully backward compatible:
-
-```python
-# v0.2.x - Still works in v0.3.0
-supervisor = GenericSupervisor("main", llm=llm)
-
-# v0.3.0 - Optional context builder
-supervisor = GenericSupervisor("main", llm=llm, context_builder=my_builder)
-```
+- **v0.2.x → v0.3.0**: No migration needed, fully backward compatible
+- **v0.3.0 → v0.3.1**: If using `llm_provider` with `build_graph_from_registry()`, use `supervisor_factory` to preserve `context_builder`
 
 ---
 

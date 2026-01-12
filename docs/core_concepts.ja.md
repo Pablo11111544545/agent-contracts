@@ -270,77 +270,6 @@ if result.has_errors:
 
 ---
 
-## StateSummarizer
-
-再帰的な構造保持を伴うインテリジェントなステートスライス要約：
-
-```python
-from agent_contracts.utils import StateSummarizer, summarize_state_slice
-
-# カスタム設定でサマライザーを作成
-summarizer = StateSummarizer(
-    max_depth=2,          # 最大再帰深度
-    max_dict_items=3,     # レベルごとの最大辞書項目数
-    max_list_items=2,     # レベルごとの最大リスト項目数
-    max_str_length=50,    # 最大文字列長
-)
-
-# 複雑なネストデータを要約
-profile = {
-    "user_id": "user123",
-    "preferences": {
-        "style": "casual",
-        "colors": ["blue", "green", "red"],
-        "brands": ["Nike", "Adidas", "Puma", "Reebok"],
-    },
-    "history": [
-        {"item": "shirt", "date": "2024-01-01"},
-        {"item": "pants", "date": "2024-01-02"},
-    ]
-}
-
-summary = summarizer.summarize(profile)
-# 出力: {'user_id': 'user123', 'preferences': {'style': 'casual', 
-#        'colors': [...] (3 items), 'brands': [...] (4 items)}, 
-#        'history': [{'item', 'date'} (2 items), ...] (2 items)}
-
-# または便利関数を使用
-summary = summarize_state_slice(profile, max_depth=2)
-```
-
-### 主な機能
-
-- **再帰的トラバーサル**: ネスト構造を保持（リスト内の辞書、辞書内のリストなど）
-- **深度制限**: 過度なネストを防止（デフォルト: 2レベル）
-- **項目数制御**: コレクションごとに表示する項目数を制限（デフォルト: 辞書3個、リスト2個）
-- **構造保持**: キーだけでなく階層関係を表示
-- **サイズ表示**: 切り詰められたコレクションの総項目数を表示
-
-### ユースケース
-
-1. **LLMコンテキスト構築**: トークン予算を圧迫せずにリッチなコンテキストを提供
-2. **デバッグ**: 複雑なステート構造の概要を素早く把握
-3. **ロギング**: 大規模データ構造の簡潔な表現
-4. **APIレスポンス**: ネストデータの人間が読みやすい要約
-
-### Supervisorとの統合
-
-`GenericSupervisor`は自動的に`StateSummarizer`をコンテキスト構築に使用：
-
-```python
-supervisor = GenericSupervisor("shopping", llm=llm)
-# 内部的に_summarize_slice()でStateSummarizerを使用
-decision = await supervisor.decide(state)
-```
-
-Supervisorのコンテキストには以下が含まれるようになりました：
-- ネスト構造の可視性（トップレベルのキーだけでなく）
-- 大規模コレクションの最初の数項目
-- 切り詰められたデータの総項目数
-- 階層関係の保持
-
----
-
 ## トレーサブルルーティング
 
 デバッグには`decide_with_trace()`を使用：
@@ -368,15 +297,21 @@ for rule in decision.reason.matched_rules:
 
 ## Supervisorのコンテキスト構築
 
-`GenericSupervisor`は、候補ノードのContractを分析することで、LLMベースのルーティング判断のための豊富なコンテキストを自動的に構築します。
+`GenericSupervisor`はLLMベースのルーティング判断のためのコンテキストを自動的に構築します。
 
-### デフォルトのコンテキスト構築
+### デフォルトのコンテキスト構築（v0.2.3+）
 
-デフォルトでは、SupervisorはLLMに最小限のコンテキストを提供します：
+デフォルトでは、Supervisorは**最小限のコンテキスト**をLLMに提供します：
 
-1. **基本スライス**: 常に`request`、`response`、`_internal`を含む
-2. **根拠**: これらのスライスにはルーティング判断に必要な基本情報が含まれる
-3. **効率性**: 判断品質を維持しながらトークン使用量を低く抑える
+1. **基本スライスのみ**: 常に`request`、`response`、`_internal`を含む
+2. **根拠**:
+   - 候補スライスはトリガー条件で既に評価済み
+   - それらをLLMに渡すのは冗長でトークンを浪費
+   - 明確な分離：トリガー = ルールベースフィルタリング、LLM = 最終選択
+3. **メリット**:
+   - 大幅なトークン削減
+   - パフォーマンス向上（シリアライズと送信データが少ない）
+   - LLM理解のため`response`経由で会話コンテキストを維持
 
 ### カスタムコンテキストビルダー（v0.3.0+）
 
@@ -402,6 +337,56 @@ supervisor = GenericSupervisor(
 )
 ```
 
+### サマリーフォーマット（v0.3.1+）
+
+`context_builder`の戻り値の`summary`フィールドは`dict`と`str`の両フォーマットをサポート：
+
+```python
+# 文字列フォーマット - プロンプトに直接含まれる（整形テキストに最適）
+def context_builder(state, candidates):
+    return {
+        "slices": {"request", "response", "conversation"},
+        "summary": f"最近の会話:\n{format_messages(state)}"
+    }
+
+# 辞書フォーマット - 含まれる前にJSON化（構造を保持）
+def context_builder(state, candidates):
+    return {
+        "slices": {"request", "response", "conversation"},
+        "summary": {
+            "turn_count": 5,
+            "topics": ["shopping", "preferences"]
+        }
+    }
+```
+
+### レジストリベースグラフでの使用（v0.3.1+）
+
+`build_graph_from_registry()`を`llm_provider`と共に使用する場合、`supervisor_factory`を使用してカスタムスーパーバイザーを注入：
+
+```python
+from agent_contracts import build_graph_from_registry, GenericSupervisor
+
+def my_context_builder(state, candidates):
+    return {
+        "slices": {"request", "response", "conversation"},
+        "summary": f"会話履歴:\n{format_history(state)}"
+    }
+
+def supervisor_factory(name: str, llm):
+    return GenericSupervisor(
+        supervisor_name=name,
+        llm=llm,
+        context_builder=my_context_builder,  # カスタムコンテキストが保持される！
+    )
+
+graph = build_graph_from_registry(
+    llm_provider=get_llm,
+    supervisor_factory=supervisor_factory,  # カスタムスーパーバイザーを注入
+    supervisors=["card", "shopping"],
+)
+```
+
 ### コンテキストビルダープロトコル
 
 ```python
@@ -418,8 +403,10 @@ class ContextBuilder(Protocol):
             
         Returns:
             以下を含む辞書:
-            - slices: 含めるスライス名のセット
-            - summary: 集約情報を含むオプションの辞書
+            - slices (set[str]): 含めるスライス名のセット
+            - summary (dict | str | None): オプションの追加コンテキスト
+              - str: プロンプトに直接含まれる（整形テキスト）
+              - dict: 含まれる前にJSON化
         """
         ...
 ```
@@ -440,34 +427,30 @@ def conversation_context_builder(state: dict, candidates: list[str]) -> dict:
     """より良いルーティングのために会話履歴を含める"""
     messages = state.get("conversation", {}).get("messages", [])
     
+    # LLM可読性向上のため文字列としてフォーマット
+    formatted = "\n".join([
+        f"{m['role']}: {m['content']}"
+        for m in messages[-5:]  # 最後の5メッセージ
+    ])
+    
     return {
         "slices": {"request", "response", "_internal", "conversation"},
-        "summary": {
-            "total_turns": len(messages),
-            "last_topic": extract_topic(messages[-1]) if messages else None,
-            "user_satisfaction": calculate_satisfaction(messages),
-        }
+        "summary": f"最近の会話 ({len(messages)} ターン):\n{formatted}"
     }
 ```
 
 ### メリット
 
 - **柔軟性**: アプリケーションドメインごとにコンテキストをカスタマイズ
-- **後方互換性**: 提供されない場合は既存の動作をデフォルトで使用
+- **後方互換性**: 提供されない場合は最小コンテキストをデフォルトで使用
 - **型安全**: プロトコルが正しい実装を保証
 - **効率的**: LLMに送信されるコンテキストを正確に制御
+- **フォーマットサポート**: 整形テキスト用の文字列、構造化データ用の辞書
 
-### v0.2.xからの移行
+### 移行ノート
 
-移行は不要 - v0.3.0は完全に後方互換性があります：
-
-```python
-# v0.2.x - v0.3.0でも引き続き動作
-supervisor = GenericSupervisor("main", llm=llm)
-
-# v0.3.0 - オプションのコンテキストビルダー
-supervisor = GenericSupervisor("main", llm=llm, context_builder=my_builder)
-```
+- **v0.2.x → v0.3.0**: 移行不要、完全に後方互換性あり
+- **v0.3.0 → v0.3.1**: `build_graph_from_registry()`を`llm_provider`と共に使用する場合、`context_builder`を保持するために`supervisor_factory`を使用
 
 ---
 
