@@ -257,6 +257,75 @@ state = reset_response(state)
 
 ---
 
+## 🎨 高度な機能: カスタムコンテキストビルダー
+
+デフォルトでは、`GenericSupervisor`はルーティング判断のためにLLMに`request`、`response`、`_internal`スライスのみを渡します。追加のコンテキスト（例：会話履歴、ドメイン状態）が必要な複雑なシナリオでは、カスタム`context_builder`を提供できます。
+
+### 例: ECサイトエージェント
+
+```python
+from agent_contracts import GenericSupervisor
+
+def ecommerce_context_builder(state: dict, candidates: list[str]) -> dict:
+    """ECサイトのルーティング判断用のコンテキストを構築"""
+    cart = state.get("cart", {})
+    inventory = state.get("inventory", {})
+    
+    return {
+        "slices": {"request", "response", "_internal", "cart", "inventory"},
+        "summary": {
+            "cart_total": sum(item["price"] for item in cart.get("items", [])),
+            "low_stock_count": len([i for i in inventory.get("items", [])
+                                     if i["quantity"] < 10]),
+            "user_tier": state.get("user", {}).get("tier", "standard"),
+        },
+    }
+
+supervisor = GenericSupervisor(
+    supervisor_name="checkout",
+    llm=llm,
+    registry=registry,
+    context_builder=ecommerce_context_builder,
+)
+```
+
+### 例: 会話認識エージェント
+
+```python
+def conversation_context_builder(state: dict, candidates: list[str]) -> dict:
+    """会話履歴を含むコンテキストを構築"""
+    messages = state.get("conversation", {}).get("messages", [])
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    
+    return {
+        "slices": {"request", "response", "_internal", "conversation"},
+        "summary": {
+            "total_turns": len(user_messages),
+            "last_question": messages[-2].get("content") if len(messages) >= 2 else None,
+            "last_answer": messages[-1].get("content") if messages else None,
+        },
+    }
+
+supervisor = GenericSupervisor(
+    supervisor_name="assistant",
+    llm=llm,
+    context_builder=conversation_context_builder,
+)
+```
+
+### ユースケース
+
+- **会話認識ルーティング**: コンテキストに応じた判断のためにチャット履歴を含める
+- **ビジネスロジック統合**: 在庫、価格、ユーザーティアなどを組み込む
+- **マルチモーダルエージェント**: 画像分析、音声トランスクリプトなどを追加
+- **ドメイン固有ルーティング**: アプリケーションに合わせたスーパーバイザーの動作をカスタマイズ
+
+### APIリファレンス
+
+詳細は[APIドキュメント](https://yatarousan0227.github.io/agent-contracts/)の`ContextBuilder`プロトコルを参照してください。
+
+---
+
 ## 🔄 Runtime Layer
 
 プロダクションアプリケーションでは、統一された実行、ライフサイクルフック、ストリーミングのためにRuntime Layerを使用します。

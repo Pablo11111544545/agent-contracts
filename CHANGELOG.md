@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-01-12
+
+### Added
+
+- **Custom Context Builder for GenericSupervisor**
+  - New `ContextBuilder` Protocol for type-safe context customization
+  - `context_builder` parameter in `GenericSupervisor.__init__()`
+  - Allows customization of which state slices and additional context are passed to LLM for routing decisions
+  - Enables conversation-aware routing, business logic integration, and domain-specific decisions
+  - Fully backward compatible - defaults to existing behavior when not provided
+
+- **Enhanced LLM Context**
+  - LLM can now receive additional context beyond base slices (request, response, _internal)
+  - Support for "summary" dict to provide aggregated information (e.g., turn counts, readiness scores)
+  - Better routing decisions for complex multi-agent scenarios
+
+### Use Cases
+
+- **E-commerce agents**: Include cart and inventory data for purchase-aware routing
+- **Customer support**: Include ticket history and sentiment analysis
+- **Education platforms**: Include learning progress and pace
+- **Conversation agents**: Include chat history and turn counts for context-aware decisions
+
+### Example
+
+```python
+def my_context_builder(state: dict, candidates: list[str]) -> dict:
+    return {
+        "slices": {"request", "response", "_internal", "conversation"},
+        "summary": {
+            "total_turns": len(state.get("conversation", {}).get("messages", [])),
+            "readiness": 0.67
+        }
+    }
+
+supervisor = GenericSupervisor(
+    supervisor_name="shopping",
+    llm=llm,
+    context_builder=my_context_builder,
+)
+```
+
+### Notes
+
+- No breaking changes - fully backward compatible
+- Default behavior unchanged when `context_builder` is not provided
+- Comprehensive test coverage added (5 new tests in `test_supervisor_context_builder.py`)
+- All existing tests pass (11 tests in `test_supervisor.py`)
+
 ## [0.2.3] - 2026-01-11
 
 ### Changed

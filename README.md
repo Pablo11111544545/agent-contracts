@@ -257,6 +257,75 @@ state = reset_response(state)
 
 ---
 
+## 🎨 Advanced: Custom Context Builder
+
+By default, `GenericSupervisor` passes only `request`, `response`, and `_internal` slices to the LLM for routing decisions. For complex scenarios requiring additional context (e.g., conversation history, domain state), you can provide a custom `context_builder`.
+
+### Example: E-commerce Agent
+
+```python
+from agent_contracts import GenericSupervisor
+
+def ecommerce_context_builder(state: dict, candidates: list[str]) -> dict:
+    """Build context for e-commerce routing decisions."""
+    cart = state.get("cart", {})
+    inventory = state.get("inventory", {})
+    
+    return {
+        "slices": {"request", "response", "_internal", "cart", "inventory"},
+        "summary": {
+            "cart_total": sum(item["price"] for item in cart.get("items", [])),
+            "low_stock_count": len([i for i in inventory.get("items", [])
+                                     if i["quantity"] < 10]),
+            "user_tier": state.get("user", {}).get("tier", "standard"),
+        },
+    }
+
+supervisor = GenericSupervisor(
+    supervisor_name="checkout",
+    llm=llm,
+    registry=registry,
+    context_builder=ecommerce_context_builder,
+)
+```
+
+### Example: Conversation-Aware Agent
+
+```python
+def conversation_context_builder(state: dict, candidates: list[str]) -> dict:
+    """Build context with conversation history."""
+    messages = state.get("conversation", {}).get("messages", [])
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    
+    return {
+        "slices": {"request", "response", "_internal", "conversation"},
+        "summary": {
+            "total_turns": len(user_messages),
+            "last_question": messages[-2].get("content") if len(messages) >= 2 else None,
+            "last_answer": messages[-1].get("content") if messages else None,
+        },
+    }
+
+supervisor = GenericSupervisor(
+    supervisor_name="assistant",
+    llm=llm,
+    context_builder=conversation_context_builder,
+)
+```
+
+### Use Cases
+
+- **Conversation-aware routing**: Include chat history for context-sensitive decisions
+- **Business logic integration**: Incorporate inventory, pricing, user tier, etc.
+- **Multi-modal agents**: Add image analysis, audio transcripts, etc.
+- **Domain-specific routing**: Tailor supervisor behavior to your application
+
+### API Reference
+
+See `ContextBuilder` protocol in the [API documentation](https://yatarousan0227.github.io/agent-contracts/) for full details.
+
+---
+
 ## 🔄 Runtime Layer
 
 For production applications, use the Runtime Layer for unified execution, lifecycle hooks, and streaming.

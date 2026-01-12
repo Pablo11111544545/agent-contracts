@@ -370,64 +370,103 @@ for rule in decision.reason.matched_rules:
 
 The `GenericSupervisor` automatically builds rich context for LLM-based routing decisions by analyzing the contracts of candidate nodes.
 
-### How It Works
+### Default Context Building
 
-When the Supervisor needs to make a routing decision:
+By default, the Supervisor provides minimal context to the LLM:
 
-1. **Collect Base Slices**: Always includes `request`, `response`, `_internal`
-2. **Analyze Candidates**: Examines the `reads` field of each candidate node's contract
-3. **Merge Slices**: Combines base slices with candidate-specific slices
-4. **Summarize**: Converts each slice to a concise string representation
-5. **Provide to LLM**: Passes the enriched context for informed decision-making
+1. **Base Slices**: Always includes `request`, `response`, `_internal`
+2. **Rationale**: These slices contain the essential information for routing decisions
+3. **Efficiency**: Keeps token usage low while maintaining decision quality
 
-### Example
+### Custom Context Builder (v0.3.0+)
+
+For complex scenarios requiring additional context, you can provide a custom `context_builder` function:
 
 ```python
-# Node contracts
-node_a = NodeContract(
-    name="profile_analyzer",
-    reads=["request", "profile_card", "interview"],
-    ...
-)
+from agent_contracts import GenericSupervisor
 
-node_b = NodeContract(
-    name="search_handler",
-    reads=["request", "search_history"],
-    ...
-)
+def my_context_builder(state: dict, candidates: list[str]) -> dict:
+    """Build custom context for routing decisions."""
+    return {
+        "slices": {"request", "response", "_internal", "conversation"},
+        "summary": {
+            "total_turns": len(state.get("conversation", {}).get("messages", [])),
+            "readiness_score": calculate_readiness(state),
+        }
+    }
 
-# When both are candidates, Supervisor provides:
-# - request (base)
-# - response (base)
-# - _internal (base)
-# - profile_card (from node_a)
-# - interview (from node_a)
-# - search_history (from node_b)
+supervisor = GenericSupervisor(
+    supervisor_name="shopping",
+    llm=llm,
+    context_builder=my_context_builder,
+)
+```
+
+### Context Builder Protocol
+
+```python
+from typing import Protocol
+
+class ContextBuilder(Protocol):
+    def __call__(self, state: dict, candidates: list[str]) -> dict:
+        """
+        Build context for LLM routing decisions.
+        
+        Args:
+            state: Current agent state
+            candidates: List of candidate node names
+            
+        Returns:
+            Dictionary with:
+            - slices: Set of slice names to include
+            - summary: Optional dict with aggregated information
+        """
+        ...
+```
+
+### Use Cases
+
+| Scenario | Custom Context |
+|----------|---------------|
+| **E-commerce** | Include `cart`, `inventory` for purchase-aware routing |
+| **Customer Support** | Include `ticket_history`, `sentiment` for context-aware responses |
+| **Education** | Include `learning_progress`, `pace` for adaptive tutoring |
+| **Conversation** | Include `conversation` with turn counts and history |
+
+### Example: Conversation-Aware Routing
+
+```python
+def conversation_context_builder(state: dict, candidates: list[str]) -> dict:
+    """Include conversation history for better routing."""
+    messages = state.get("conversation", {}).get("messages", [])
+    
+    return {
+        "slices": {"request", "response", "_internal", "conversation"},
+        "summary": {
+            "total_turns": len(messages),
+            "last_topic": extract_topic(messages[-1]) if messages else None,
+            "user_satisfaction": calculate_satisfaction(messages),
+        }
+    }
 ```
 
 ### Benefits
 
-- **Contract-Driven**: No application-specific knowledge required
-- **Efficient**: Only includes relevant state information
-- **Automatic**: Works for any node without configuration
-- **Scalable**: Adapts as you add new nodes
+- **Flexible**: Customize context per application domain
+- **Backward Compatible**: Defaults to existing behavior when not provided
+- **Type-Safe**: Protocol ensures correct implementation
+- **Efficient**: Control exactly what context is sent to LLM
 
-### Customization
+### Migration from v0.2.x
 
-The context building is automatic, but you can influence it through:
-
-1. **Node Contracts**: Declare what your node reads
-2. **State Organization**: Keep slices focused and well-named
-3. **Slice Size**: Large slices are automatically truncated
+No migration needed - v0.3.0 is fully backward compatible:
 
 ```python
-# The Supervisor will automatically include these slices
-# when this node is a candidate
-CONTRACT = NodeContract(
-    name="my_node",
-    reads=["request", "user_profile", "conversation_history"],
-    ...
-)
+# v0.2.x - Still works in v0.3.0
+supervisor = GenericSupervisor("main", llm=llm)
+
+# v0.3.0 - Optional context builder
+supervisor = GenericSupervisor("main", llm=llm, context_builder=my_builder)
 ```
 
 ---
