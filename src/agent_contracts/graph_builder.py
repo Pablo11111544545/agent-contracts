@@ -36,6 +36,7 @@ class GraphBuilder:
         state_class: type | None = None,
         llm_provider: Callable[[], Any] | None = None,
         dependency_provider: Callable[[NodeContract], dict] | None = None,
+        supervisor_factory: Callable[[str, Any], GenericSupervisor] | None = None,
     ):
         """Initialize.
         
@@ -44,6 +45,7 @@ class GraphBuilder:
             state_class: State type (uses dict if not provided)
             llm_provider: Function that provides LLM instances
             dependency_provider: Function that provides dependencies for nodes
+            supervisor_factory: Function that creates supervisor instances (name, llm) -> GenericSupervisor
         """
         self.registry = registry or get_node_registry()
         self.state_class = state_class
@@ -53,6 +55,7 @@ class GraphBuilder:
         self.node_instances: dict[str, Any] = {}
         self.llm_provider = llm_provider
         self.dependency_provider = dependency_provider
+        self.supervisor_factory = supervisor_factory
         self.logger = logger
     
     def add_supervisor(
@@ -133,11 +136,15 @@ class GraphBuilder:
         async def wrapper(state: dict, config: Optional[RunnableConfig] = None) -> dict:
             if self.llm_provider:
                 llm = self.llm_provider()
-                current = GenericSupervisor(
-                    supervisor_name=supervisor_name,
-                    llm=llm,
-                    registry=self.registry,
-                )
+                # Use custom supervisor_factory if provided, otherwise create default
+                if self.supervisor_factory:
+                    current = self.supervisor_factory(supervisor_name, llm)
+                else:
+                    current = GenericSupervisor(
+                        supervisor_name=supervisor_name,
+                        llm=llm,
+                        registry=self.registry,
+                    )
                 updates = await current.run(state, config=config)
             else:
                 if supervisor is None:
@@ -183,6 +190,7 @@ def build_graph_from_registry(
     llm=None,
     llm_provider: Callable[[], Any] | None = None,
     dependency_provider: Callable[[NodeContract], dict] | None = None,
+    supervisor_factory: Callable[[str, Any], GenericSupervisor] | None = None,
     entrypoint: tuple[str, Callable, Callable] | None = None,
     supervisors: list[str] | None = None,
     state_class: type | None = None,
@@ -202,6 +210,7 @@ def build_graph_from_registry(
         llm: LLM instance (for all supervisors)
         llm_provider: Function to get LLM instances
         dependency_provider: Function to get dependencies for nodes
+        supervisor_factory: Function to create supervisor instances (name, llm) -> GenericSupervisor
         entrypoint: (name, node_func, route_func) tuple for entry point
         supervisors: List of supervisor names to add
         state_class: State class for StateGraph
@@ -216,6 +225,7 @@ def build_graph_from_registry(
         state_class=state_class,
         llm_provider=llm_provider,
         dependency_provider=dependency_provider,
+        supervisor_factory=supervisor_factory,
     )
     
     # Add supervisors

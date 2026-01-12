@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-01-12
+
+### Added
+
+- **Supervisor Factory Support in GraphBuilder**
+  - New `supervisor_factory` parameter in `GraphBuilder.__init__()` and `build_graph_from_registry()`
+  - Allows custom supervisor instance creation when using `llm_provider` for dynamic LLM injection
+  - Enables `context_builder` to work with registry-based automatic graph generation
+  - Signature: `supervisor_factory(name: str, llm: Any) -> GenericSupervisor`
+  - Fully backward compatible - optional parameter with default None
+
+### Improved
+
+- **GenericSupervisor context_builder optimization**
+  - Eliminated duplicate `context_builder` calls in `_decide_with_llm()`
+  - Previously called twice: once in `_collect_context_slices()` and again for `summary`
+  - Now calls once and reuses the result
+  - Better performance and cleaner code structure
+
+- **Flexible summary format support**
+  - `context_builder` can now return `summary` as either `dict` or `str`
+  - String format: Directly included in LLM prompt (ideal for formatted text)
+  - Dict format: JSON-serialized before inclusion (preserves structure)
+  - Prevents double-encoding of string summaries
+  - Improves LLM readability for conversation history and formatted context
+
+### Fixed
+
+- **Registry-based graph generation with context_builder**
+  - Fixed issue where `context_builder` was ignored when using `llm_provider` with `build_graph_from_registry()`
+  - GraphBuilder was creating default GenericSupervisor instances without custom configurations
+  - Now uses `supervisor_factory` to inject properly configured supervisors at runtime
+  - Enables conversation-aware routing in production deployments using dependency injection
+
+### Use Case
+
+```python
+from agent_contracts import build_graph_from_registry, GenericSupervisor
+
+def my_context_builder(state, candidates):
+    return {
+        "slices": {"request", "response", "conversation"},
+        "summary": f"Recent conversation:\n{format_messages(state)}"  # String format
+    }
+
+def supervisor_factory(name: str, llm):
+    return GenericSupervisor(
+        supervisor_name=name,
+        llm=llm,
+        context_builder=my_context_builder,  # Custom context now preserved!
+    )
+
+graph = build_graph_from_registry(
+    llm_provider=get_llm,
+    supervisor_factory=supervisor_factory,  # Inject custom supervisors
+    supervisors=["card", "shopping"],
+)
+```
+
+### Notes
+
+- No breaking changes - fully backward compatible
+- Fixes limitation where dynamic LLM injection prevented context_builder usage
+- Essential for production scenarios using dependency injection patterns
+- All existing tests pass
+
 ## [0.3.0] - 2026-01-12
 
 ### Added

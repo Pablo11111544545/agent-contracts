@@ -288,8 +288,24 @@ class GenericSupervisor:
         3. Previous node suggestion
         """
         try:
-            # Collect relevant slices based on candidates
-            context_slices = self._collect_context_slices(state, rule_candidates)
+            # Collect relevant slices and additional context from context_builder
+            context_slices = {"request", "response", "_internal"}  # default
+            additional_context = ""
+            
+            if self.context_builder:
+                result = self.context_builder(state, rule_candidates)
+                context_slices = result.get("slices", context_slices)
+                
+                # Handle summary - support both dict and string formats
+                if result.get("summary"):
+                    summary = result["summary"]
+                    if isinstance(summary, str):
+                        # Already formatted as string
+                        additional_context = f"\n\nAdditional Context:\n{summary}"
+                    else:
+                        # Dict format - convert to JSON
+                        summary_json = json.dumps(summary, ensure_ascii=False, default=str)
+                        additional_context = f"\n\nAdditional Context:\n{summary_json}"
             
             # Build state summary using direct JSON serialization
             state_parts = []
@@ -299,14 +315,6 @@ class GenericSupervisor:
                     state_parts.append(f"{slice_name}: {slice_json}")
             
             state_summary = "\n".join(state_parts) if state_parts else "(no state)"
-            
-            # Get additional context from context_builder
-            additional_context = ""
-            if self.context_builder:
-                result = self.context_builder(state, rule_candidates)
-                if result.get("summary"):
-                    summary_json = json.dumps(result["summary"], ensure_ascii=False, default=str)
-                    additional_context = f"\n\nAdditional Context:\n{summary_json}"
             
             # Format candidates with match reasons
             candidates_with_reasons = self._format_rule_candidates_with_reasons(
