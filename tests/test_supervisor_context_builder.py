@@ -90,3 +90,97 @@ def test_context_builder_receives_candidates():
     
     assert "node_a" in received_candidates
     assert "node_b" in received_candidates
+
+
+def test_context_builder_with_string_summary():
+    """context_builderがstring型のsummaryを返すことをサポート。"""
+    def string_summary_builder(state, candidates):
+        messages = state.get("conversation", {}).get("messages", [])
+        history = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+        return {
+            "slices": {"request", "response", "_internal", "conversation"},
+            "summary": f"Recent conversation:\n{history}"  # String format
+        }
+    
+    supervisor = GenericSupervisor("test", llm=None, context_builder=string_summary_builder)
+    
+    state = {
+        "conversation": {
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there"},
+            ]
+        }
+    }
+    
+    result = string_summary_builder(state, [])
+    
+    assert isinstance(result["summary"], str)
+    assert "Recent conversation:" in result["summary"]
+    assert "user: Hello" in result["summary"]
+    assert "assistant: Hi there" in result["summary"]
+
+
+def test_context_builder_with_dict_summary():
+    """context_builderがdict型のsummaryを返すことをサポート（後方互換性）。"""
+    def dict_summary_builder(state, candidates):
+        return {
+            "slices": {"request", "response", "_internal"},
+            "summary": {
+                "turn_count": 5,
+                "readiness": 0.8,
+            }
+        }
+    
+    supervisor = GenericSupervisor("test", llm=None, context_builder=dict_summary_builder)
+    
+    result = dict_summary_builder({}, [])
+    
+    assert isinstance(result["summary"], dict)
+    assert result["summary"]["turn_count"] == 5
+    assert result["summary"]["readiness"] == 0.8
+
+
+@pytest.mark.asyncio
+async def test_string_summary_in_llm_context():
+    """String型summaryがLLMコンテキストに正しく含まれることを確認。"""
+    from unittest.mock import AsyncMock, MagicMock
+    
+    def string_summary_builder(state, candidates):
+        return {
+            "slices": {"request", "response", "_internal"},
+            "summary": "## Custom Context\nThis is formatted text"
+        }
+    
+    # Mock LLM
+    mock_llm = MagicMock()
+    mock_decision = MagicMock()
+    mock_decision.next_node = "done"
+    mock_decision.reasoning = "test"
+    mock_llm.with_structured_output = MagicMock(return_value=MagicMock(
+        ainvoke=AsyncMock(return_value=mock_decision)
+    ))
+    
+    # Mock registry
+    from agent_contracts import NodeRegistry
+    registry = NodeRegistry()
+    
+    supervisor = GenericSupervisor(
+        "test",
+        llm=mock_llm,
+        registry=registry,
+        context_builder=string_summary_builder
+    )
+    
+    state = {
+        "request": {"action": "test"},
+        "response": {"response_type": "test"},
+        "_internal": {},
+    }
+    
+    # Execute decision
+    result = await supervisor.decide(state)
+    
+    # Verify LLM was called (which means summary was included in context)
+    assert mock_llm.with_structured_output.called
+    assert result.next_node == "done"

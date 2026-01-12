@@ -466,3 +466,34 @@ class TestBuildGraphFromRegistry:
         edges = graph.edges
         node_a_edges = [e for e in edges if e[0] == "node_a"]
         assert len(node_a_edges) > 0
+
+    def test_with_supervisor_factory(self, registry):
+        """Test with custom supervisor_factory parameter."""
+        from agent_contracts import GenericSupervisor
+        
+        def custom_context_builder(state, candidates):
+            return {
+                "slices": {"request", "response", "_internal", "custom"},
+                "summary": "Custom context"
+            }
+        
+        def supervisor_factory(name: str, llm):
+            return GenericSupervisor(
+                supervisor_name=name,
+                llm=llm,
+                registry=registry,
+                context_builder=custom_context_builder,
+            )
+        
+        mock_llm_provider = MagicMock(return_value=MagicMock())
+        
+        # Should not raise error
+        graph = build_graph_from_registry(
+            registry=registry,
+            supervisors=["main"],
+            llm_provider=mock_llm_provider,
+            supervisor_factory=supervisor_factory,
+        )
+        
+        assert isinstance(graph, StateGraph)
+        assert "main_supervisor" in graph.nodes
