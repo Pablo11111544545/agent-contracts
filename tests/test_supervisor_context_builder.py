@@ -14,10 +14,11 @@ def test_default_behavior_without_context_builder():
         "conversation": {"messages": []},
     }
     
-    slices = supervisor._collect_context_slices(state, [])
+    slices, additional_context = supervisor._collect_context_slices(state, [])
     
     assert slices == {"request", "response", "_internal"}
     assert "conversation" not in slices
+    assert additional_context == ""
 
 
 def test_custom_context_builder_adds_slices():
@@ -28,10 +29,11 @@ def test_custom_context_builder_adds_slices():
         }
     
     supervisor = GenericSupervisor("test", llm=None, context_builder=custom_builder)
-    slices = supervisor._collect_context_slices({}, [])
+    slices, additional_context = supervisor._collect_context_slices({}, [])
     
     assert "conversation" in slices
     assert len(slices) == 4
+    assert additional_context == ""
 
 
 def test_custom_context_builder_with_summary():
@@ -71,10 +73,11 @@ def test_context_builder_fallback_to_default():
         return {}  # "slices" キーがない
     
     supervisor = GenericSupervisor("test", llm=None, context_builder=bad_builder)
-    slices = supervisor._collect_context_slices({}, [])
+    slices, additional_context = supervisor._collect_context_slices({}, [])
     
     # デフォルト値にフォールバック
     assert slices == {"request", "response", "_internal"}
+    assert additional_context == ""
 
 
 def test_context_builder_receives_candidates():
