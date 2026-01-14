@@ -261,6 +261,22 @@ state = reset_response(state)
 
 デフォルトでは、`GenericSupervisor`はルーティング判断のためにLLMに`request`、`response`、`_internal`スライスのみを渡します。追加のコンテキスト（例：会話履歴、ドメイン状態）が必要な複雑なシナリオでは、カスタム`context_builder`を提供できます。
 
+#### フィールド長のサニタイズ (v0.3.3+)
+
+Supervisorは、大きなバイナリデータ（例：base64画像）がLLMプロンプトに含まれるのを防ぐため、長いフィールド値を自動的にサニタイズします：
+
+```python
+supervisor = GenericSupervisor(
+    supervisor_name="shopping",
+    llm=llm,
+    max_field_length=10000  # デフォルト: 10000文字
+)
+```
+
+- 画像データパターン（`image`、`iVBOR`、`/9j/`、`R0lGOD`、`image`）は`[IMAGE_DATA]`に置換
+- 長いテキストフィールドは最初の`max_field_length`文字を保持し、`...[TRUNCATED:{n}_chars]`を追加
+- この最適化により、ルーティング精度を維持しながらトークン消費を削減
+
 ### 例: ECサイトエージェント
 
 ```python

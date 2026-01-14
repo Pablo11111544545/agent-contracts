@@ -6,7 +6,7 @@ Registry trigger conditions and LLM.
 from __future__ import annotations
 
 import json
-from typing import Any, Optional, Protocol
+from typing import Any, Optional, Protocol, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,7 @@ from langchain_core.runnables import RunnableConfig
 from agent_contracts.registry import NodeRegistry, get_node_registry
 from agent_contracts.config import get_config
 from agent_contracts.utils.logging import get_logger
+from agent_contracts.utils.sanitize_context import sanitize_for_llm_util
 from agent_contracts.routing import MatchedRule, RoutingReason, RoutingDecision
 
 logger = get_logger("agent_contracts.supervisor")
@@ -25,6 +26,17 @@ class SupervisorDecision(BaseModel):
     """Supervisor decision result."""
     next_node: str = Field(description="Next node name, or 'done'")
     reasoning: str = Field(default="", description="Decision reasoning")
+
+
+class ContextBuilderResult(TypedDict, total=False):
+    """Result from ContextBuilder.
+    
+    Attributes:
+        slices: Set of slice names to include in LLM context (required)
+        summary: Additional context summary as dict or string (optional)
+    """
+    slices: set[str]
+    summary: dict | str | None
 
 
 class ContextBuilder(Protocol):
@@ -54,7 +66,7 @@ class ContextBuilder(Protocol):
         self,
         state: dict,
         candidates: list[str],
-    ) -> dict:
+    ) -> ContextBuilderResult:
         """Build context for LLM routing decision.
         
         Args:
@@ -62,9 +74,10 @@ class ContextBuilder(Protocol):
             candidates: List of candidate node names from trigger evaluation
             
         Returns:
-            Dictionary with:
+            ContextBuilderResult with:
                 - "slices" (set[str]): Set of slice names to include in LLM context
-                - "summary" (dict | None): Optional additional context summary
+                - "summary" (dict | str | None): Optional additional context summary.
+                  Can be a dict (will be JSON-serialized) or pre-formatted string.
         """
         ...
 
@@ -88,6 +101,7 @@ class GenericSupervisor:
         max_iterations: int | None = None,
         terminal_response_types: set[str] | None = None,
         context_builder: ContextBuilder | None = None,
+        max_field_length: int | None = None,
     ):
         """Initialize.
         
@@ -101,12 +115,14 @@ class GenericSupervisor:
                 If provided, allows customization of which state slices and
                 additional context are passed to LLM for routing decisions.
                 If omitted, uses default behavior (request, response, _internal only).
+            max_field_length: Maximum field length for sanitization (default: 1000)
         """
         self.name = supervisor_name
         self.llm = llm
         self.registry = registry or get_node_registry()
         self.logger = logger
         self.context_builder = context_builder
+        self.max_field_length = max_field_length or 10000
         
         # Load from config or use defaults
         config = get_config()
@@ -206,25 +222,42 @@ class GenericSupervisor:
         self,
         state: dict,
         rule_candidates: list[str],
-    ) -> set[str]:
-        """Collect state slices for LLM routing decision.
+    ) -> tuple[set[str], str]:
+        """Collect state slices and build additional context for LLM routing.
         
         If a custom context_builder is provided, uses it to determine which
-        slices to include. Otherwise, uses minimal default context.
+        slices to include and any additional context summary. Otherwise, uses
+        minimal default context.
         
         Args:
             state: Current state
             rule_candidates: List of candidate node names from trigger evaluation
             
         Returns:
-            Set of slice names to include in LLM context
+            Tuple of (slice_names, additional_context_string)
         """
+        context_slices = {"request", "response", "_internal"}  # default
+        additional_context = ""
+        
         if self.context_builder:
             result = self.context_builder(state, rule_candidates)
-            return result.get("slices", {"request", "response", "_internal"})
+            
+            # Normalize slices to set
+            slices_raw = result.get("slices", context_slices)
+            context_slices = set(slices_raw) if not isinstance(slices_raw, set) else slices_raw
+            
+            # Handle summary - support both dict and string formats
+            summary = result.get("summary")
+            if summary is not None:
+                if isinstance(summary, str):
+                    # Already formatted as string
+                    additional_context = f"\n\nAdditional Context:\n{summary}"
+                else:
+                    # Dict format - convert to JSON
+                    summary_json = json.dumps(summary, ensure_ascii=False, default=str)
+                    additional_context = f"\n\nAdditional Context:\n{summary_json}"
         
-        # Default behavior (backward compatible)
-        return {"request", "response", "_internal"}
+        return context_slices, additional_context
     
     
     def _format_rule_candidates_with_reasons(
@@ -272,6 +305,27 @@ class GenericSupervisor:
         
         return "\n".join(lines) if lines else "(none)"
     
+    def _sanitize_for_llm(self, data: Any, max_str_length: int | None = None) -> Any:
+        """Sanitize data for LLM prompt.
+        
+        Exclude large binary data (images, etc.) to reduce token consumption.
+        
+        Args:
+            Data: to be sanitized
+            max_str_length: Maximum string length (default: 10000)
+            
+        Returns:
+            Sanitized data
+        """
+        return sanitize_for_llm_util(
+            data,
+            max_str_length=max_str_length or self.max_field_length,
+            sanitize_binary_urls=True,
+            base64_min_length=128,
+            hex_min_length=128,
+            classify_base64_magic=True,
+        )
+    
     async def _decide_with_llm(
         self,
         state: dict,
@@ -288,30 +342,19 @@ class GenericSupervisor:
         3. Previous node suggestion
         """
         try:
-            # Collect relevant slices and additional context from context_builder
-            context_slices = {"request", "response", "_internal"}  # default
-            additional_context = ""
+            # Collect relevant slices and additional context
+            context_slices, additional_context = self._collect_context_slices(
+                state, rule_candidates
+            )
             
-            if self.context_builder:
-                result = self.context_builder(state, rule_candidates)
-                context_slices = result.get("slices", context_slices)
-                
-                # Handle summary - support both dict and string formats
-                if result.get("summary"):
-                    summary = result["summary"]
-                    if isinstance(summary, str):
-                        # Already formatted as string
-                        additional_context = f"\n\nAdditional Context:\n{summary}"
-                    else:
-                        # Dict format - convert to JSON
-                        summary_json = json.dumps(summary, ensure_ascii=False, default=str)
-                        additional_context = f"\n\nAdditional Context:\n{summary_json}"
-            
-            # Build state summary using direct JSON serialization
+            # Build state summary using direct JSON serialization with sanitization
             state_parts = []
             for slice_name in sorted(context_slices):
                 if slice_name in state:
-                    slice_json = json.dumps(state[slice_name], ensure_ascii=False, default=str)
+                    slice_data = state[slice_name]
+                    # サApply sanitization
+                    sanitized_data = self._sanitize_for_llm(slice_data)
+                    slice_json = json.dumps(sanitized_data, ensure_ascii=False, default=str)
                     state_parts.append(f"{slice_name}: {slice_json}")
             
             state_summary = "\n".join(state_parts) if state_parts else "(no state)"

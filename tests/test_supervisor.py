@@ -298,7 +298,7 @@ class TestGenericSupervisor:
         )
         
         # Test with node1 as candidate
-        slices = supervisor._collect_context_slices(
+        slices, additional_context = supervisor._collect_context_slices(
             state={},
             rule_candidates=["node1"]
         )
@@ -307,9 +307,10 @@ class TestGenericSupervisor:
         # Candidate node reads are not included as they're already evaluated in triggers
         expected = {"request", "response", "_internal"}
         assert slices == expected
+        assert additional_context == ""
         
         # Test with both nodes as candidates
-        slices = supervisor._collect_context_slices(
+        slices, additional_context = supervisor._collect_context_slices(
             state={},
             rule_candidates=["node1", "node2"]
         )
@@ -317,6 +318,7 @@ class TestGenericSupervisor:
         # Should still only include minimal slices regardless of candidates
         expected = {"request", "response", "_internal"}
         assert slices == expected
+        assert additional_context == ""
 
 
     async def test_llm_receives_minimal_context(self, mock_registry, mock_llm):
@@ -389,3 +391,168 @@ class TestGenericSupervisor:
         
         assert result.next_node == "analyzer"
 
+
+class TestSanitizeForLLM:
+    """Tests for _sanitize_for_llm method using sanitize_for_llm_util."""
+    
+    def test_sanitize_image_data_png(self):
+        """Test PNG base64 image detection and replacement."""
+        supervisor = GenericSupervisor("test")
+        
+        # PNG base64 - long enough to be detected
+        png_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" * 200
+        result = supervisor._sanitize_for_llm(png_data, max_str_length=100)
+        # New implementation may truncate or detect as base64
+        assert "[TRUNCATED:" in result or "[BASE64_DATA" in result
+    
+    def test_sanitize_image_data_jpeg(self):
+        """Test JPEG base64 image detection with MIME type."""
+        supervisor = GenericSupervisor("test")
+        
+        # JPEG base64 - detects magic number
+        jpeg_data = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/" * 200
+        result = supervisor._sanitize_for_llm(jpeg_data, max_str_length=100)
+        # New implementation detects JPEG with MIME type
+        assert result == "[BASE64_DATA:image/jpeg]"
+    
+    def test_sanitize_image_data_gif(self):
+        """Test GIF base64 image detection with MIME type."""
+        supervisor = GenericSupervisor("test")
+        
+        # GIF base64 - detects magic number
+        gif_data = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" * 200
+        result = supervisor._sanitize_for_llm(gif_data, max_str_length=100)
+        # New implementation detects GIF with MIME type
+        assert result == "[BASE64_DATA:image/gif]"
+    
+    def test_sanitize_image_data_uri(self):
+        """Test data URI detection."""
+        supervisor = GenericSupervisor("test")
+        
+        # Proper data URI format - needs data: prefix
+        data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        result = supervisor._sanitize_for_llm(data_uri, max_str_length=100)
+        # New implementation detects Data URI with MIME
+        assert result == "[DATA_URI:image/png]"
+    
+    def test_sanitize_image_prefix(self):
+        """Test string starting with 'image' without data: prefix."""
+        supervisor = GenericSupervisor("test")
+        
+        # Without  prefix, treated as long text
+        image_prefix = "image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" * 200
+        result = supervisor._sanitize_for_llm(image_prefix, max_str_length=100)
+        # Truncated as long text
+        assert "[TRUNCATED:" in result
+    
+    def test_sanitize_long_text_truncation(self):
+        """Test long text truncation."""
+        supervisor = GenericSupervisor("test")
+        
+        # Use non-base64 characters to avoid base64 detection
+        long_text = "hello world! " * 20  # 260 chars
+        result = supervisor._sanitize_for_llm(long_text, max_str_length=100)
+        
+        # Should be truncated
+        assert "[TRUNCATED:" in result
+        assert len(result) < len(long_text)
+    
+    def test_sanitize_short_text_preserved(self):
+        """Test that short text is preserved as-is."""
+        supervisor = GenericSupervisor("test")
+        
+        short_text = "This is a short text"
+        assert supervisor._sanitize_for_llm(short_text, max_str_length=10000) == short_text
+    
+    def test_sanitize_dict_recursive(self):
+        """Test recursive sanitization in dict."""
+        supervisor = GenericSupervisor("test")
+        
+        data = {
+            "short": "short text",
+            "long": "hello world! " * 20,  # Has spaces, won't be detected as base64
+            "image": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" * 10,
+            "nested": {
+                "inner_long": "hello world! " * 20,  # Has spaces, won't be detected as base64
+                "inner_short": "ok"
+            }
+        }
+        
+        result = supervisor._sanitize_for_llm(data, max_str_length=100)
+        
+        # Short text preserved
+        assert result["short"] == "short text"
+        # Long text with spaces truncated (not base64)
+        assert "[TRUNCATED:" in result["long"]
+        # Image data: 960 chars, no spaces, should be detected as base64 or truncated
+        assert "[BASE64_DATA" in result["image"] or "[TRUNCATED:" in result["image"]
+        # Nested dict: text with spaces is truncated (not base64)
+        assert "[TRUNCATED:" in result["nested"]["inner_long"]
+        assert result["nested"]["inner_short"] == "ok"
+    
+    def test_sanitize_list_recursive(self):
+        """Test recursive sanitization in list."""
+        supervisor = GenericSupervisor("test")
+        
+        data = [
+            "short",
+            "hello world! " * 20,  # Has spaces, won't be detected as base64
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" * 10,
+            {"nested": "hello world! " * 20}  # Has spaces, won't be detected as base64
+        ]
+        
+        result = supervisor._sanitize_for_llm(data, max_str_length=100)
+        
+        assert result[0] == "short"
+        # Text with spaces is truncated (not base64)
+        assert "[TRUNCATED:" in result[1]
+        # 960 chars base64, no spaces, should be detected or truncated
+        assert "[BASE64_DATA" in result[2] or "[TRUNCATED:" in result[2]
+        # Text with spaces is truncated (not base64)
+        assert "[TRUNCATED:" in result[3]["nested"]
+    
+    def test_sanitize_nested_structure(self):
+        """Test sanitization in deeply nested structures."""
+        supervisor = GenericSupervisor("test")
+        
+        data = {
+            "level1": {
+                "level2": {
+                    "level3": [
+                        {"text": "hello world! " * 20},  # Has spaces, won't be base64
+                        {"image": "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/"}
+                    ]
+                }
+            }
+        }
+        
+        result = supervisor._sanitize_for_llm(data, max_str_length=100)
+        
+        # Deep nested text with spaces is truncated (not base64)
+        assert "[TRUNCATED:" in result["level1"]["level2"]["level3"][0]["text"]
+        # Deep nested image: 120 chars, no spaces, but not long enough for base64 detection (needs 128+)
+        # Will be truncated instead
+        assert "[TRUNCATED:" in result["level1"]["level2"]["level3"][1]["image"]
+    
+    def test_sanitize_non_string_types(self):
+        """Test that non-string types are preserved."""
+        supervisor = GenericSupervisor("test")
+        
+        # Numbers
+        assert supervisor._sanitize_for_llm(123, max_str_length=100) == 123
+        assert supervisor._sanitize_for_llm(45.67, max_str_length=100) == 45.67
+        
+        # Booleans
+        assert supervisor._sanitize_for_llm(True, max_str_length=100) is True
+        assert supervisor._sanitize_for_llm(False, max_str_length=100) is False
+        
+        # None
+        assert supervisor._sanitize_for_llm(None, max_str_length=100) is None
+    
+    def test_sanitize_empty_structures(self):
+        """Test sanitization of empty structures."""
+        supervisor = GenericSupervisor("test")
+        
+        assert supervisor._sanitize_for_llm({}, max_str_length=100) == {}
+        assert supervisor._sanitize_for_llm([], max_str_length=100) == []
+        assert supervisor._sanitize_for_llm("", max_str_length=100) == ""

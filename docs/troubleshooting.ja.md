@@ -362,6 +362,67 @@ def clean_registry():
 
 ---
 
+## トークン消費の問題
+
+### "Supervisorでのトークン使用量が予想外に多い"
+
+**原因**: ステートスライス内の大きなデータ（特にbase64画像）がルーティング判断のためにLLMに送信されている
+
+**症状**:
+- ルーティング判断で数千トークンを消費
+- Supervisorの応答が遅い
+- APIコストが高い
+
+**解決策**:
+
+1. **データサニタイズが機能していることを確認（v0.3.3+）**
+   ```python
+   # GenericSupervisorは自動的にサニタイズ:
+   # - 画像データ → "[IMAGE_DATA]"
+   # - 長い文字列 → 先頭を保持してトリミング
+   
+   # デフォルトのmax_field_lengthは10000文字
+   supervisor = GenericSupervisor(
+       supervisor_name="main",
+       llm=llm,
+       max_field_length=10000,  # 必要に応じて調整
+   )
+   ```
+
+2. **requestスライス内の画像データを確認**
+   ```python
+   # ステートにbase64画像を保存している場合:
+   request = {
+       "action": "analyze",
+       "image": "image/png;base64,iVBORw0KG..."  # 自動的にサニタイズされる
+   }
+   ```
+
+3. **context_builder実装を見直す**
+   ```python
+   def my_context_builder(state, candidates):
+       # 大きなデータを含むスライスは含めない
+       return {
+           "slices": {"request", "response", "_internal"},  # 最小限のコンテキスト
+           # 避ける: {"request", "response", "raw_data", "images"}
+       }
+   ```
+
+4. **トークン使用量を監視**
+   ```python
+   # LLMに送信される内容を確認するためにデバッグログを有効化
+   import logging
+   logging.getLogger("agent_contracts").setLevel(logging.DEBUG)
+   ```
+
+**予防策**:
+- 可能な場合、大きなデータ（画像、ファイル）はステートスライスの外に保存
+- データを埋め込む代わりに参照/URLを使用
+- 自動サニタイズを活用（v0.3.3+）
+- `context_builder`で最小限のコンテキストを使用
+
+---
+
 ## ヘルプを得る
 
 困ったときは:

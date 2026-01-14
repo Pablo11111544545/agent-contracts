@@ -255,6 +255,46 @@ class SearchNode(ModularNode):
 
 ---
 
+## Supervisorの設定
+
+### ✅ フィールド長制限をカスタマイズ
+
+```python
+from agent_contracts import GenericSupervisor
+
+# 良い例: データサイズに基づいて調整
+supervisor = GenericSupervisor(
+    supervisor_name="main",
+    llm=llm,
+    max_field_length=10000,  # 長いコンテンツの場合は増加（デフォルト: 10000）
+)
+
+# 非常に大きなステートフィールドを持つアプリケーション向け
+supervisor = GenericSupervisor(
+    supervisor_name="main",
+    llm=llm,
+    max_field_length=20000,  # 詳細なコンテキスト用に高い制限
+)
+```
+
+### ✅ データサニタイズを理解する
+
+SupervisorはLLMに送信する前にステートデータを自動的にサニタイズします：
+
+```python
+# 自動的に処理:
+# - Base64画像データ → "[IMAGE_DATA]" に置換
+# - 長い文字列 → 先頭部分を保持してトリミング
+# - 例: "長いテキスト..." → "長いテキスト...[TRUNCATED:5000_chars]"
+```
+
+**メリット**:
+- 画像データによるトークン浪費を防止
+- 長いフィールドの先頭を保持することでコンテキストを維持
+- `max_field_length`パラメータでカスタマイズ可能
+
+---
+
 ## LLMヒント
 
 ### ✅ 具体的でアクション可能に

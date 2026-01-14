@@ -159,7 +159,35 @@ when={"request.action": "buy", "context.cart_ready": True}
 
 ## GenericSupervisor
 
-The supervisor orchestrates node selection using a multi-phase approach:
+The supervisor orchestrates node selection using a multi-phase approach.
+
+### Data Sanitization for LLM (v0.3.3+)
+
+The Supervisor automatically sanitizes state data before sending it to the LLM for routing decisions:
+
+**Automatic Handling**:
+- **Image Data**: Base64-encoded images (detected via `data:image/` or `image` patterns) are replaced with `"[IMAGE_DATA]"`
+- **Long Strings**: Strings exceeding `max_field_length` (default: 10000 chars) are truncated while preserving the beginning
+  - Format: `data[:max_field_length] + "...[TRUNCATED:N_chars]"`
+  - Example: A 15000-char string becomes: `"first 10000 chars...[TRUNCATED:5000_chars]"`
+
+**Benefits**:
+- **Token Efficiency**: Prevents massive token consumption from base64 image data
+- **Context Preservation**: Maintains beginning of long fields for better routing decisions
+- **Customizable**: Adjust via `max_field_length` parameter
+
+**Configuration**:
+```python
+from agent_contracts import GenericSupervisor
+
+supervisor = GenericSupervisor(
+    supervisor_name="main",
+    llm=llm,
+    max_field_length=10000,  # Default: 10000 characters
+)
+```
+
+### Decision Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

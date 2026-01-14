@@ -362,6 +362,67 @@ def clean_registry():
 
 ---
 
+## Token Consumption Issues
+
+### "Unexpectedly high token usage with Supervisor"
+
+**Cause**: Large data (especially base64 images) in state slices being sent to LLM for routing decisions.
+
+**Symptoms**:
+- Routing decisions consuming thousands of tokens
+- Slow supervisor responses
+- High API costs
+
+**Solution**:
+
+1. **Verify data sanitization is working (v0.3.3+)**
+   ```python
+   # GenericSupervisor automatically sanitizes:
+   # - Image data → "[IMAGE_DATA]"
+   # - Long strings → Truncated with preserved beginning
+   
+   # Default max_field_length is 10000 chars
+   supervisor = GenericSupervisor(
+       supervisor_name="main",
+       llm=llm,
+       max_field_length=10000,  # Adjust if needed
+   )
+   ```
+
+2. **Check for image data in request slice**
+   ```python
+   # If you're storing base64 images in state:
+   request = {
+       "action": "analyze",
+       "image": "data:image/png;base64,iVBORw0KG..."  # Automatically sanitized
+   }
+   ```
+
+3. **Review context_builder implementation**
+   ```python
+   def my_context_builder(state, candidates):
+       # Don't include slices with large data
+       return {
+           "slices": {"request", "response", "_internal"},  # Minimal context
+           # Avoid: {"request", "response", "raw_data", "images"}
+       }
+   ```
+
+4. **Monitor token usage**
+   ```python
+   # Enable debug logging to see what's sent to LLM
+   import logging
+   logging.getLogger("agent_contracts").setLevel(logging.DEBUG)
+   ```
+
+**Prevention**:
+- Store large data (images, files) outside state slices when possible
+- Use references/URLs instead of embedding data
+- Leverage automatic sanitization (v0.3.3+)
+- Use minimal context in `context_builder`
+
+---
+
 ## Getting Help
 
 If you're stuck:

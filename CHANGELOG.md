@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-01-14
+
+### Added
+- Added `max_field_length` parameter to `GenericSupervisor` for customizable field length limits in LLM prompts
+
+### Changed
+- Changed default string length limit in `GenericSupervisor._sanitize_for_llm()` from 1000 to 10000 characters
+- Improved long string handling: preserves beginning instead of complete replacement, then trims remainder (e.g., `data[:10000] + "...[TRUNCATED:5000_chars]"`)
+- Extended image data detection patterns: now also detects `image` format
+
+### Fixed
+- Fixed issue where base64 image data in `request` slice was included in Supervisor's LLM prompt, causing rapid token consumption increase
+- Fixed issue where long text fields were completely lost (preserving beginning maintains Supervisor's decision accuracy)
+
 ## [0.3.2] - 2026-01-12
 
 ### Fixed

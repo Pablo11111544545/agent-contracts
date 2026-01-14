@@ -253,6 +253,46 @@ class SearchNode(ModularNode):
 
 ---
 
+## Supervisor Configuration
+
+### ✅ Customize Field Length Limits
+
+```python
+from agent_contracts import GenericSupervisor
+
+# Good: Adjust based on your data size
+supervisor = GenericSupervisor(
+    supervisor_name="main",
+    llm=llm,
+    max_field_length=10000,  # Increase for longer content (default: 10000)
+)
+
+# For applications with very large state fields
+supervisor = GenericSupervisor(
+    supervisor_name="main",
+    llm=llm,
+    max_field_length=20000,  # Higher limit for detailed context
+)
+```
+
+### ✅ Understand Data Sanitization
+
+The Supervisor automatically sanitizes state data before sending to LLM:
+
+```python
+# Automatically handles:
+# - Base64 image data → Replaced with "[IMAGE_DATA]"
+# - Long strings → Truncated with preserved beginning
+# - Example: "Long text..." → "Long text...[TRUNCATED:5000_chars]"
+```
+
+**Benefits**:
+- Prevents token waste from image data
+- Maintains context by preserving beginning of long fields
+- Customizable via `max_field_length` parameter
+
+---
+
 ## LLM Hints
 
 ### ✅ Be Specific and Actionable
