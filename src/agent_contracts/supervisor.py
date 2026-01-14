@@ -28,7 +28,7 @@ class SupervisorDecision(BaseModel):
 
 
 class ContextBuilder(Protocol):
-    """Supervisor用のコンテキスト構築プロトコル。
+    """Protocol for building supervisor context.
     
     Allows customization of which state slices and additional context
     are passed to LLM for routing decisions.
@@ -88,6 +88,7 @@ class GenericSupervisor:
         max_iterations: int | None = None,
         terminal_response_types: set[str] | None = None,
         context_builder: ContextBuilder | None = None,
+        max_field_length: int | None = None,
     ):
         """Initialize.
         
@@ -101,12 +102,17 @@ class GenericSupervisor:
                 If provided, allows customization of which state slices and
                 additional context are passed to LLM for routing decisions.
                 If omitted, uses default behavior (request, response, _internal only).
+            max_field_length: Maximum field length for sanitization (default: 10000).
+                Long strings exceeding this limit will be replaced with placeholders
+                to prevent large binary data (e.g., base64 images) from being
+                included in LLM prompts.
         """
         self.name = supervisor_name
         self.llm = llm
         self.registry = registry or get_node_registry()
         self.logger = logger
         self.context_builder = context_builder
+        self.max_field_length = max_field_length or 10000
         
         # Load from config or use defaults
         config = get_config()
@@ -272,6 +278,35 @@ class GenericSupervisor:
         
         return "\n".join(lines) if lines else "(none)"
     
+    def _sanitize_for_llm(self, data: Any, max_str_length: int = 10000) -> Any:
+        """Sanitize data for LLM prompt.
+        
+        Exclude large binary data (images, etc.) to reduce token consumption.
+        
+        Args:
+             Data to be sanitized
+            max_str_length: Maximum string length (default: 10000)
+            
+        Returns:
+            Sanitized data
+        """
+        if isinstance(data, dict):
+            return {k: self._sanitize_for_llm(v, max_str_length) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._sanitize_for_llm(item, max_str_length) for item in data]
+        elif isinstance(data, str):
+            if len(data) > max_str_length:
+                # Check for image patterns first (priority)
+                if data.startswith(('image', 'iVBOR', '/9j/', 'R0lGOD', 'data:image')):
+                    return "[IMAGE_DATA]"
+                
+                # For other long text, keep the beginning and trim
+                truncated_length = len(data) - max_str_length
+                return data[:max_str_length] + f"...[TRUNCATED:{truncated_length}_chars]"
+            return data
+        else:
+            return data
+    
     async def _decide_with_llm(
         self,
         state: dict,
@@ -307,11 +342,14 @@ class GenericSupervisor:
                         summary_json = json.dumps(summary, ensure_ascii=False, default=str)
                         additional_context = f"\n\nAdditional Context:\n{summary_json}"
             
-            # Build state summary using direct JSON serialization
+            # Build state summary using direct JSON serialization with sanitization
             state_parts = []
             for slice_name in sorted(context_slices):
                 if slice_name in state:
-                    slice_json = json.dumps(state[slice_name], ensure_ascii=False, default=str)
+                    slice_data = state[slice_name]
+                    # Apply sanitization
+                    sanitized_data = self._sanitize_for_llm(slice_data, self.max_field_length)
+                    slice_json = json.dumps(sanitized_data, ensure_ascii=False, default=str)
                     state_parts.append(f"{slice_name}: {slice_json}")
             
             state_summary = "\n".join(state_parts) if state_parts else "(no state)"

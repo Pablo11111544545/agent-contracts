@@ -261,6 +261,22 @@ state = reset_response(state)
 
 By default, `GenericSupervisor` passes only `request`, `response`, and `_internal` slices to the LLM for routing decisions. For complex scenarios requiring additional context (e.g., conversation history, domain state), you can provide a custom `context_builder`.
 
+#### Field Length Sanitization (v0.3.3+)
+
+The Supervisor automatically sanitizes long field values to prevent large binary data (e.g., base64 images) from being included in LLM prompts:
+
+```python
+supervisor = GenericSupervisor(
+    supervisor_name="shopping",
+    llm=llm,
+    max_field_length=10000  # Default: 10000 characters
+)
+```
+
+- Image data patterns (`image`, `iVBOR`, `/9j/`, `R0lGOD`, `data:image`) are replaced with `[IMAGE_DATA]`
+- Long text fields preserve the first `max_field_length` characters and append `...[TRUNCATED:{n}_chars]`
+- This optimization reduces token consumption while maintaining routing accuracy
+
 ### Example: E-commerce Agent
 
 ```python

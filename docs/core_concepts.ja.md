@@ -159,7 +159,35 @@ when={"request.action": "buy", "context.cart_ready": True}
 
 ## GenericSupervisor
 
-スーパーバイザーは多段階アプローチでノード選択を調整します：
+スーパーバイザーは多段階アプローチでノード選択を調整します。
+
+### LLM用データサニタイズ（v0.3.3+）
+
+Supervisorはルーティング判断のためにLLMに送信する前に、ステートデータを自動的にサニタイズします：
+
+**自動処理**:
+- **画像データ**: Base64エンコード画像（`image/`または`image`パターンで検出）は`"[IMAGE_DATA]"`に置換
+- **長い文字列**: `max_field_length`（デフォルト: 10000文字）を超える文字列は、先頭部分を保持してトリミング
+  - フォーマット: `data[:max_field_length] + "...[TRUNCATED:N_chars]"`
+  - 例: 15000文字の文字列は: `"最初の10000文字...[TRUNCATED:5000_chars]"`になる
+
+**メリット**:
+- **トークン効率**: base64画像データによる大量のトークン消費を防止
+- **コンテキスト保持**: 長いフィールドの先頭を維持することで、より良いルーティング判断を実現
+- **カスタマイズ可能**: `max_field_length`パラメータで調整可能
+
+**設定**:
+```python
+from agent_contracts import GenericSupervisor
+
+supervisor = GenericSupervisor(
+    supervisor_name="main",
+    llm=llm,
+    max_field_length=10000,  # デフォルト: 10000文字
+)
+```
+
+### 決定フロー
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
