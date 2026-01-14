@@ -322,6 +322,43 @@ for rule in decision.reason.matched_rules:
 | `llm_decision` | LLMが選択 |
 | `fallback` | マッチなし、デフォルトを使用 |
 
+### TriggerMatch構造（v0.4.0+）
+
+v0.4.0から、`evaluate_triggers()`は`TriggerMatch`オブジェクトを返します：
+
+```python
+from agent_contracts import TriggerMatch
+
+# evaluate_triggers() の返り値
+matches: list[TriggerMatch] = registry.evaluate_triggers("supervisor_name", state)
+
+for match in matches:
+    print(f"ノード: {match.node_name}")
+    print(f"優先度: {match.priority}")
+    print(f"条件インデックス: {match.condition_index}")  # 実際にマッチした条件
+```
+
+**メリット:**
+- 同じ優先度の複数条件がある場合でも、実際にマッチした条件を正確に特定
+- LLMルーティングでより正確な説明を提供
+- デバッグとトレーサビリティの向上
+
+**マイグレーション (v0.3.x → v0.4.0):**
+
+```python
+# v0.3.x - tuple形式
+matches: list[tuple[int, str]] = registry.evaluate_triggers("main", state)
+for priority, node_name in matches:
+    print(f"{node_name}: P{priority}")
+
+# v0.4.0 - TriggerMatch形式
+matches: list[TriggerMatch] = registry.evaluate_triggers("main", state)
+for match in matches:
+    print(f"{match.node_name}: P{match.priority}")
+```
+
+**注意:** `GenericSupervisor`や`decide()`/`decide_with_trace()`を使用している場合は、変更不要です。
+
 
 ## Supervisorのコンテキスト構築
 

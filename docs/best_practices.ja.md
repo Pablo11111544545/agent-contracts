@@ -227,17 +227,56 @@ TriggerCondition(priority=PRIORITY_PRIMARY, when={"request.action": "search"})
 TriggerCondition(priority=PRIORITY_FALLBACK, llm_hint="一般的なアシスタンス")
 ```
 
-### ✅ 優先度の衝突を避ける
+### ✅ 柔軟な優先度の使用（v0.4.0+）
+
+v0.4.0以降は、どの条件がマッチしたかを正確に追跡できるため、柔軟な優先度設計が可能です：
 
 ```python
-# 悪い例: 同じ優先度、予測不能な順序
-TriggerCondition(priority=10, when={"request.action": "a"})
-TriggerCondition(priority=10, when={"request.action": "b"})
+# オプション1: 明確な順序付けのために優先度を分ける
+class SearchNode(ModularNode):
+    CONTRACT = NodeContract(
+        trigger_conditions=[
+            TriggerCondition(
+                priority=51,  # 画像検索を優先
+                when={"request.action": "search", "request.has_image": True},
+            ),
+            TriggerCondition(
+                priority=50,  # 通常の検索
+                when={"request.action": "search"},
+            ),
+        ],
+    )
 
-# 良い例: 明確な順序付け
-TriggerCondition(priority=11, when={"request.action": "a"})
-TriggerCondition(priority=10, when={"request.action": "b"})
+# オプション2: 同じ優先度でLLMに柔軟に選ばせる（v0.4.0+）
+class RecommendationNode(ModularNode):
+    CONTRACT = NodeContract(
+        trigger_conditions=[
+            TriggerCondition(
+                priority=50,  # 同じ優先度、LLMに判断を任せる
+                when={"request.action": "recommend", "context.style": "casual"},
+                llm_hint="カジュアルスタイルのレコメンドに使用",
+            ),
+            TriggerCondition(
+                priority=50,  # 同じ優先度
+                when={"request.action": "recommend", "context.style": "formal"},
+                llm_hint="フォーマルスタイルのレコメンドに使用",
+            ),
+        ],
+    )
 ```
+
+**v0.4.0のメリット:**
+- 同じ優先度でも条件を正確に追跡
+- LLMが実際にマッチした条件の正確な情報を受け取る
+- 複数の条件が等しく有効な場合に柔軟な設計パターンが可能
+
+**同じ優先度が有効なユースケース:**
+- 複数のスタイル/嗜好バリエーション（LLMに最適なマッチを選ばせる）
+- A/Bテストシナリオ
+- 厳密な順序付けが不要なコンテキストバリエーション
+
+**v0.3.x以前をご使用の場合:**
+v0.3.x以前では、同じ優先度の複数条件を使用すると、条件説明が不正確になる可能性があります。これらのバージョンでは、明確な順序付けのために異なる優先度を使用してください。
 
 ### ✅ 優先度の決定をドキュメント化
 

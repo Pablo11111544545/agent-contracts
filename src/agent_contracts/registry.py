@@ -5,12 +5,27 @@ data flow analysis, and graph construction support.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from agent_contracts.contracts import NodeContract, TriggerCondition
 from agent_contracts.utils.logging import get_logger
 
 logger = get_logger("agent_contracts.registry")
+
+
+@dataclass
+class TriggerMatch:
+    """Represents a matched trigger condition.
+    
+    Attributes:
+        priority: Priority of the matched condition
+        node_name: Name of the matched node
+        condition_index: Index of the matched condition in the node's trigger_conditions list
+    """
+    priority: int
+    node_name: str
+    condition_index: int
 
 
 class NodeRegistry:
@@ -99,7 +114,7 @@ class NodeRegistry:
         self,
         supervisor: str,
         state: dict,
-    ) -> list[tuple[int, str]]:
+    ) -> list[TriggerMatch]:
         """Evaluate all node trigger conditions and return matches.
         
         Args:
@@ -107,26 +122,25 @@ class NodeRegistry:
             state: Current State
             
         Returns:
-            Matched node names (ordered by priority) as (priority, name) tuples
+            List of TriggerMatch objects sorted by priority (descending)
         """
-        candidates: list[tuple[int, str]] = []
+        matches: list[TriggerMatch] = []
         
         for name in self.get_supervisor_nodes(supervisor):
             contract = self._contracts[name]
             
-            # Find highest priority matching condition for this node
-            highest_priority: int | None = None
-            for condition in contract.trigger_conditions:
+            # Find first matching condition for this node
+            for idx, condition in enumerate(contract.trigger_conditions):
                 if self._evaluate_condition(condition, state):
-                    if highest_priority is None or condition.priority > highest_priority:
-                        highest_priority = condition.priority
-            
-            if highest_priority is not None:
-                candidates.append((highest_priority, name))
+                    matches.append(TriggerMatch(
+                        priority=condition.priority,
+                        node_name=name,
+                        condition_index=idx,
+                    ))
+                    break  # First matching condition only
         
         # Sort by priority (descending)
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        return candidates
+        return sorted(matches, key=lambda x: x.priority, reverse=True)
     
     def _evaluate_condition(
         self,

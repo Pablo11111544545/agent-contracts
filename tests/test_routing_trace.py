@@ -7,6 +7,7 @@ from agent_contracts import (
     NodeInputs,
     NodeOutputs,
     TriggerCondition,
+    TriggerMatch,
     RoutingDecision,
     RoutingReason,
     MatchedRule,
@@ -310,7 +311,10 @@ class TestBuildMatchedRules:
     
     def test_build_matched_rules(self, supervisor):
         """Should build correct MatchedRule list."""
-        matches = [(100, "high_priority"), (50, "medium_priority")]
+        matches = [
+            TriggerMatch(priority=100, node_name="high_priority", condition_index=0),
+            TriggerMatch(priority=50, node_name="medium_priority", condition_index=0)
+        ]
         
         rules = supervisor._build_matched_rules(matches)
         

@@ -322,6 +322,43 @@ for rule in decision.reason.matched_rules:
 | `llm_decision` | LLM made the choice |
 | `fallback` | No match, using default |
 
+### TriggerMatch Structure (v0.4.0+)
+
+Starting from v0.4.0, `evaluate_triggers()` returns `TriggerMatch` objects:
+
+```python
+from agent_contracts import TriggerMatch
+
+# evaluate_triggers() return value
+matches: list[TriggerMatch] = registry.evaluate_triggers("supervisor_name", state)
+
+for match in matches:
+    print(f"Node: {match.node_name}")
+    print(f"Priority: {match.priority}")
+    print(f"Condition Index: {match.condition_index}")  # The actual matched condition
+```
+
+**Benefits:**
+- Accurately identifies which condition matched, even with multiple conditions at the same priority
+- Provides more precise explanations for LLM routing
+- Improves debugging and traceability
+
+**Migration (v0.3.x → v0.4.0):**
+
+```python
+# v0.3.x - tuple format
+matches: list[tuple[int, str]] = registry.evaluate_triggers("main", state)
+for priority, node_name in matches:
+    print(f"{node_name}: P{priority}")
+
+# v0.4.0 - TriggerMatch format
+matches: list[TriggerMatch] = registry.evaluate_triggers("main", state)
+for match in matches:
+    print(f"{match.node_name}: P{match.priority}")
+```
+
+**Note:** If you're using `GenericSupervisor` or `decide()`/`decide_with_trace()`, no changes are required.
+
 
 ## Supervisor Context Building
 

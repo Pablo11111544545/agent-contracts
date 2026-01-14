@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 
-from agent_contracts.registry import NodeRegistry, get_node_registry
+from agent_contracts.registry import NodeRegistry, TriggerMatch, get_node_registry
 from agent_contracts.config import get_config
 from agent_contracts.utils.logging import get_logger
 from agent_contracts.utils.sanitize_context import sanitize_for_llm_util
@@ -199,7 +199,7 @@ class GenericSupervisor:
         
         return None
     
-    def _select_top_matches(self, matches: list[tuple[int, str]]) -> list[str]:
+    def _select_top_matches(self, matches: list[TriggerMatch]) -> list[str]:
         """Select top candidates handling ties (Top 3 + Ties)."""
         if not matches:
             return []
@@ -208,12 +208,12 @@ class GenericSupervisor:
         limit = 3
         last_prio = -1
         
-        for i, (prio, name) in enumerate(matches):
+        for i, match in enumerate(matches):
             if i < limit:
-                selected.append(name)
-                last_prio = prio
-            elif prio == last_prio:
-                selected.append(name)
+                selected.append(match.node_name)
+                last_prio = match.priority
+            elif match.priority == last_prio:
+                selected.append(match.node_name)
             else:
                 break
         return selected
@@ -262,7 +262,7 @@ class GenericSupervisor:
     
     def _format_rule_candidates_with_reasons(
         self,
-        matches: list[tuple[int, str]],
+        matches: list[TriggerMatch],
         candidates: list[str],
     ) -> str:
         """Format rule candidates with match reasons for LLM context.
@@ -275,33 +275,28 @@ class GenericSupervisor:
             return "(none)"
         
         lines = []
-        for priority, node_name in matches:
-            if node_name not in candidates:
+        for match in matches:
+            if match.node_name not in candidates:
                 continue
             
-            contract = self.registry.get_contract(node_name)
+            contract = self.registry.get_contract(match.node_name)
             if not contract:
-                lines.append(f"- {node_name} (P{priority})")
+                lines.append(f"- {match.node_name} (P{match.priority})")
                 continue
             
-            # Find the matching condition
+            # Use the actual matched condition
+            condition = contract.trigger_conditions[match.condition_index]
             condition_str = ""
-            for condition in contract.trigger_conditions:
-                if condition.priority == priority:
-                    if condition.when:
-                        parts = [f"{k}={v}" for k, v in condition.when.items()]
-                        condition_str = " AND ".join(parts)
-                    elif condition.when_not:
-                        parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
-                        condition_str = " AND ".join(parts)
-                    else:
-                        condition_str = "(always)"
-                    break
-            
-            if condition_str:
-                lines.append(f"- {node_name} (P{priority}): matched because {condition_str}")
+            if condition.when:
+                parts = [f"{k}={v}" for k, v in condition.when.items()]
+                condition_str = " AND ".join(parts)
+            elif condition.when_not:
+                parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
+                condition_str = " AND ".join(parts)
             else:
-                lines.append(f"- {node_name} (P{priority})")
+                condition_str = "(always)"
+            
+            lines.append(f"- {match.node_name} (P{match.priority}): matched because {condition_str}")
         
         return "\n".join(lines) if lines else "(none)"
     
@@ -329,7 +324,7 @@ class GenericSupervisor:
     async def _decide_with_llm(
         self,
         state: dict,
-        matches: list[tuple[int, str]],
+        matches: list[TriggerMatch],
         rule_candidates: list[str],
         child_decision: str | None,
         config: Optional[RunnableConfig] = None,
@@ -413,34 +408,32 @@ Last active node suggested: {child_decision or 'None'}
     
     def _build_matched_rules(
         self,
-        matches: list[tuple[int, str]],
+        matches: list[TriggerMatch],
     ) -> list[MatchedRule]:
         """Build MatchedRule list from trigger matches."""
         matched_rules = []
         
-        for priority, node_name in matches:
-            contract = self.registry.get_contract(node_name)
+        for match in matches:
+            contract = self.registry.get_contract(match.node_name)
             if not contract:
                 continue
             
-            # Find the matching condition description
+            # Use the actual matched condition
+            condition = contract.trigger_conditions[match.condition_index]
             condition_str = ""
-            for condition in contract.trigger_conditions:
-                if condition.priority == priority:
-                    if condition.when:
-                        parts = [f"{k}={v}" for k, v in condition.when.items()]
-                        condition_str = " AND ".join(parts)
-                    elif condition.when_not:
-                        parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
-                        condition_str = " AND ".join(parts)
-                    else:
-                        condition_str = "(always)"
-                    break
+            if condition.when:
+                parts = [f"{k}={v}" for k, v in condition.when.items()]
+                condition_str = " AND ".join(parts)
+            elif condition.when_not:
+                parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
+                condition_str = " AND ".join(parts)
+            else:
+                condition_str = "(always)"
             
             matched_rules.append(MatchedRule(
-                node=node_name,
+                node=match.node_name,
                 condition=condition_str or "(unknown)",
-                priority=priority,
+                priority=match.priority,
             ))
         
         return matched_rules
@@ -542,7 +535,7 @@ Last active node suggested: {child_decision or 'None'}
         # Phase 3: Fallback
         if matches:
             return RoutingDecision(
-                selected_node=matches[0][1],
+                selected_node=matches[0].node_name,
                 reason=RoutingReason(
                     decision_type="rule_match",
                     matched_rules=matched_rules,

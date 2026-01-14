@@ -423,6 +423,39 @@ def clean_registry():
 
 ---
 
+## Migration Issues
+
+### "TypeError: 'TriggerMatch' object is not subscriptable" (v0.4.0)
+
+**Cause**: Code using `evaluate_triggers()` directly assumes v0.3.x `tuple` format
+
+**Symptoms**:
+```python
+# v0.3.x format code
+matches = registry.evaluate_triggers("main", state)
+priority, node_name = matches[0]  # Error!
+```
+
+**Solution**:
+```python
+# Update to v0.4.0 format
+matches = registry.evaluate_triggers("main", state)
+match = matches[0]
+priority = match.priority
+node_name = match.node_name
+condition_index = match.condition_index  # New feature!
+```
+
+**Affected Code:**
+- Direct calls to `evaluate_triggers()`
+- Processing results of `registry.evaluate_triggers()`
+
+**Unaffected Code:**
+- Using `GenericSupervisor` only
+- Using `decide()` or `decide_with_trace()` only
+
+---
+
 ## Getting Help
 
 If you're stuck:

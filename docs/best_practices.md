@@ -225,17 +225,56 @@ TriggerCondition(priority=PRIORITY_PRIMARY, when={"request.action": "search"})
 TriggerCondition(priority=PRIORITY_FALLBACK, llm_hint="General assistance")
 ```
 
-### ✅ Avoid Priority Collisions
+### ✅ Flexible Priority Use (v0.4.0+)
+
+v0.4.0+ accurately tracks which condition matched, enabling flexible priority design:
 
 ```python
-# Bad: Same priority, unpredictable order
-TriggerCondition(priority=10, when={"request.action": "a"})
-TriggerCondition(priority=10, when={"request.action": "b"})
+# Option 1: Different priorities for clear ordering
+class SearchNode(ModularNode):
+    CONTRACT = NodeContract(
+        trigger_conditions=[
+            TriggerCondition(
+                priority=51,  # Image search has priority
+                when={"request.action": "search", "request.has_image": True},
+            ),
+            TriggerCondition(
+                priority=50,  # Regular search
+                when={"request.action": "search"},
+            ),
+        ],
+    )
 
-# Good: Clear ordering
-TriggerCondition(priority=11, when={"request.action": "a"})
-TriggerCondition(priority=10, when={"request.action": "b"})
+# Option 2: Same priority for flexible LLM selection (v0.4.0+)
+class RecommendationNode(ModularNode):
+    CONTRACT = NodeContract(
+        trigger_conditions=[
+            TriggerCondition(
+                priority=50,  # Same priority, let LLM decide
+                when={"request.action": "recommend", "context.style": "casual"},
+                llm_hint="Use for casual style recommendations",
+            ),
+            TriggerCondition(
+                priority=50,  # Same priority
+                when={"request.action": "recommend", "context.style": "formal"},
+                llm_hint="Use for formal style recommendations",
+            ),
+        ],
+    )
 ```
+
+**Benefits of v0.4.0:**
+- Accurate condition tracking even with same priority
+- LLM receives precise information about which condition matched
+- Enables flexible design patterns where multiple conditions are equally valid
+
+**Use cases for same priority:**
+- Multiple style/preference variants (let LLM choose best match)
+- A/B testing scenarios
+- Contextual variations without strict ordering
+
+**Note for v0.3.x and earlier:**
+If using v0.3.x or earlier, avoid using the same priority for multiple conditions, as the condition explanation may be inaccurate. In these versions, use different priorities for clear ordering.
 
 ### ✅ Document Priority Decisions
 

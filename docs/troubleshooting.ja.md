@@ -423,6 +423,39 @@ def clean_registry():
 
 ---
 
+## マイグレーション問題
+
+### "TypeError: 'TriggerMatch' object is not subscriptable" (v0.4.0)
+
+**原因**: `evaluate_triggers()`を直接使用しているコードがv0.3.xの`tuple`形式を前提としている
+
+**症状**:
+```python
+# v0.3.x形式のコード
+matches = registry.evaluate_triggers("main", state)
+priority, node_name = matches[0]  # エラー！
+```
+
+**解決策**:
+```python
+# v0.4.0形式に更新
+matches = registry.evaluate_triggers("main", state)
+match = matches[0]
+priority = match.priority
+node_name = match.node_name
+condition_index = match.condition_index  # 新機能！
+```
+
+**影響を受けるコード:**
+- `evaluate_triggers()`を直接呼び出している
+- `registry.evaluate_triggers()`の結果を処理している
+
+**影響を受けないコード:**
+- `GenericSupervisor`のみを使用
+- `decide()`や`decide_with_trace()`のみを使用
+
+---
+
 ## ヘルプを得る
 
 困ったときは:

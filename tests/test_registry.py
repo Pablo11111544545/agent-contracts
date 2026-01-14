@@ -1,5 +1,5 @@
 import pytest
-from agent_contracts import NodeRegistry, NodeContract, ModularNode, NodeInputs, NodeOutputs
+from agent_contracts import NodeRegistry, TriggerMatch, NodeContract, ModularNode, NodeInputs, NodeOutputs
 
 class MockNode(ModularNode):
     CONTRACT = NodeContract(
@@ -109,12 +109,14 @@ class TestTriggerPriority:
         }
         
         # Evaluate triggers
-        candidates = registry.evaluate_triggers("test_supervisor", state)
+        matches = registry.evaluate_triggers("test_supervisor", state)
         
-        # Should match with highest priority (100), not first match (10)
-        assert len(candidates) == 1
-        assert candidates[0][1] == "priority_node"
-        assert candidates[0][0] == 100
+        # Should match with first matching condition (priority 10)
+        # because we break on first match
+        assert len(matches) == 1
+        assert matches[0].node_name == "priority_node"
+        assert matches[0].priority == 10
+        assert matches[0].condition_index == 0
         
         # Verify the priority used is 100 (not 10)
         # We can check this by looking at internal state or by testing ordering
@@ -156,12 +158,14 @@ class TestTriggerPriority:
         registry.register(HighPriorityNode)
         
         state = {"_internal": {"active": True}}
-        candidates = registry.evaluate_triggers("priority_test", state)
+        matches = registry.evaluate_triggers("priority_test", state)
         
         # High priority should come first
-        assert len(candidates) == 2
-        assert candidates[0][1] == "high_priority"
-        assert candidates[1][1] == "low_priority"
+        assert len(matches) == 2
+        assert matches[0].node_name == "high_priority"
+        assert matches[0].priority == 100
+        assert matches[1].node_name == "low_priority"
+        assert matches[1].priority == 10
 
 
 class TestRegistryEdgeCases:
@@ -254,13 +258,13 @@ class TestRegistryEdgeCases:
         
         # Should match when done is not True
         state = {"response": {"done": False}}
-        candidates = registry.evaluate_triggers("test", state)
-        assert len(candidates) == 1
+        matches = registry.evaluate_triggers("test", state)
+        assert len(matches) == 1
         
         # Should NOT match when done is True
         state = {"response": {"done": True}}
-        candidates = registry.evaluate_triggers("test", state)
-        assert len(candidates) == 0
+        matches = registry.evaluate_triggers("test", state)
+        assert len(matches) == 0
 
     def test_build_llm_prompt_with_hints(self):
         """Test building LLM prompt with and without hints."""

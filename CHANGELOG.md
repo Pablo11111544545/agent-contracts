@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-14
+
+### Breaking Changes
+- **Registry**: `evaluate_triggers()` now returns `list[TriggerMatch]` instead of `list[tuple[int, str]]` ([#XXX])
+  - `TriggerMatch` dataclass tracks which specific condition matched
+  - Enables accurate condition explanation in supervisor routing
+  - Migration: Update code using `evaluate_triggers()` directly (see docs)
+
+### Added
+- **Registry**: New `TriggerMatch` dataclass with `priority`, `node_name`, and `condition_index` fields
+- **Supervisor**: New `ContextBuilderResult` TypedDict for better type safety
+
+### Fixed
+- **Supervisor**: Fixed dead code issue - `_collect_context_slices()` is now properly used ([#XXX])
+- **Supervisor**: Fixed type inconsistencies in `ContextBuilder` Protocol ([#XXX])
+  - Added normalization to convert list to set for slices
+  - Documented str/dict support for summary field
+- **Supervisor**: Fixed incorrect condition explanation when multiple conditions have same priority ([#XXX])
+  - Now uses actual matched condition instead of first found condition
+
+### Improved
+- **Type Safety**: Better type hints and IDE support for ContextBuilder
+- **Maintainability**: Eliminated code duplication in context collection
+- **Accuracy**: More accurate routing explanations for LLM decision making
+
+### Documentation
+- Added migration guide for v0.4.0 breaking changes
+- Added implementation summary: `docs/supervisor_code_review_implementation.md`
+
 ## [0.3.3] - 2026-01-14
 
 ### Added

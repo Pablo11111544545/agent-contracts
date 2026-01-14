@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from agent_contracts import GenericSupervisor, NodeContract, TriggerCondition
+from agent_contracts import GenericSupervisor, NodeContract, TriggerCondition, TriggerMatch
 
 @pytest.fixture
 def mock_registry():
@@ -42,7 +42,9 @@ class TestGenericSupervisor:
     async def test_rule_candidate_with_llm(self, mock_registry, mock_llm):
         """Test that rule candidates are passed to LLM for final decision."""
         # Mock evaluate_triggers to return a rule candidate
-        mock_registry.evaluate_triggers.return_value = [(10, "node1")]
+        mock_registry.evaluate_triggers.return_value = [
+            TriggerMatch(priority=10, node_name="node1", condition_index=0)
+        ]
         mock_registry.build_llm_prompt.return_value = "Choose next action"
         
         # Setup LLM to return the rule candidate
@@ -120,10 +122,10 @@ class TestGenericSupervisor:
         """Test that nodes with same priority are all included."""
         # Multiple nodes with same priority
         mock_registry.evaluate_triggers.return_value = [
-            (10, "node1"),
-            (10, "node2"),  # Same priority
-            (10, "node3"),  # Same priority
-            (10, "node4"),  # Same priority (beyond limit but same priority)
+            TriggerMatch(priority=10, node_name="node1", condition_index=0),
+            TriggerMatch(priority=10, node_name="node2", condition_index=0),
+            TriggerMatch(priority=10, node_name="node3", condition_index=0),
+            TriggerMatch(priority=10, node_name="node4", condition_index=0),
         ]
         mock_registry.build_llm_prompt.return_value = "Choose"
         
@@ -144,7 +146,9 @@ class TestGenericSupervisor:
 
     async def test_llm_returns_invalid_node_fallback_to_rule(self, mock_registry, mock_llm):
         """Test fallback when LLM returns invalid node."""
-        mock_registry.evaluate_triggers.return_value = [(10, "node1")]
+        mock_registry.evaluate_triggers.return_value = [
+            TriggerMatch(priority=10, node_name="node1", condition_index=0)
+        ]
         mock_registry.build_llm_prompt.return_value = "Choose"
         
         from agent_contracts.supervisor import SupervisorDecision
@@ -169,7 +173,9 @@ class TestGenericSupervisor:
 
     async def test_llm_error_fallback(self, mock_registry, mock_llm):
         """Test fallback when LLM throws error."""
-        mock_registry.evaluate_triggers.return_value = [(10, "node1")]
+        mock_registry.evaluate_triggers.return_value = [
+            TriggerMatch(priority=10, node_name="node1", condition_index=0)
+        ]
         mock_registry.build_llm_prompt.return_value = "Choose"
         
         mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(
@@ -246,7 +252,9 @@ class TestGenericSupervisor:
         mock_registry.get_contract.side_effect = lambda name: {
             "when_not_node": contract_when_not,
         }.get(name)
-        mock_registry.evaluate_triggers.return_value = [(5, "when_not_node")]
+        mock_registry.evaluate_triggers.return_value = [
+            TriggerMatch(priority=5, node_name="when_not_node", condition_index=0)
+        ]
         mock_registry.get_supervisor_nodes.return_value = ["when_not_node"]
         
         supervisor = GenericSupervisor(
@@ -340,7 +348,9 @@ class TestGenericSupervisor:
         )
         
         mock_registry.get_contract.side_effect = lambda name: contract if name == "analyzer" else None
-        mock_registry.evaluate_triggers.return_value = [(10, "analyzer")]
+        mock_registry.evaluate_triggers.return_value = [
+            TriggerMatch(priority=10, node_name="analyzer", condition_index=0)
+        ]
         # Use a callable that includes context in the prompt
         def build_prompt_with_context(supervisor, state, context=None):
             prompt = "Choose next action"

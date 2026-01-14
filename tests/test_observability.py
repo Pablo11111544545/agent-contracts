@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from agent_contracts import ModularNode, NodeContract, NodeInputs, NodeOutputs
+from agent_contracts import ModularNode, NodeContract, NodeInputs, NodeOutputs, TriggerMatch
 from agent_contracts.supervisor import GenericSupervisor
 
 class MockNode(ModularNode):
@@ -43,7 +43,9 @@ async def test_supervisor_adds_trace_info():
     """Test that GenericSupervisor creates new config with trace info (immutable pattern)."""
     # Mock registry
     mock_registry = MagicMock()
-    mock_registry.evaluate_triggers.return_value = [(100, "mock_node")]
+    mock_registry.evaluate_triggers.return_value = [
+        TriggerMatch(priority=100, node_name="mock_node", condition_index=0)
+    ]
     
     supervisor = GenericSupervisor(
         supervisor_name="main",
