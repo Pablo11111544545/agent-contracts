@@ -249,14 +249,15 @@ class TestNodeIcons:
         """Test LLM node gets robot icon."""
         contract = registry.get_contract("interviewer")
         icon = visualizer._get_node_icon(contract)
-        # LLM + Interview (💬)
-        assert icon == "🤖💬"
+        # LLM + default (📦) since 'interview' icon was removed
+        assert icon == "🤖📦"
     
     def test_like_icon(self, registry: NodeRegistry, visualizer: ContractVisualizer):
-        """Test like handler gets heart icon."""
+        """Test like handler gets default icon (domain icons removed)."""
         contract = registry.get_contract("like_handler")
         icon = visualizer._get_node_icon(contract)
-        assert icon == "❤️"
+        # Domain-specific icons removed, now uses default
+        assert icon == "📦"
 
     def test_search_icon(self, visualizer: ContractVisualizer):
         """Test search node gets search icon."""
@@ -404,7 +405,7 @@ class TestDetailedDependencies:
         assert "1 nodes" in count
 
     def test_card_icon(self, registry: NodeRegistry, visualizer: ContractVisualizer):
-        """Test card node gets card icon."""
+        """Test card node gets default icon (domain icons removed)."""
         # Need to register a node with 'card' in name but not terminal
         class CardNode(ModularNode):
             CONTRACT = NodeContract(
@@ -418,7 +419,8 @@ class TestDetailedDependencies:
         registry.register(CardNode)
         contract = registry.get_contract("card_viewer")
         icon = visualizer._get_node_icon(contract)
-        assert icon == "🃏"
+        # Domain-specific icons removed, now uses default
+        assert icon == "📦"
 
 
 class TestMultipleTriggerConditions:

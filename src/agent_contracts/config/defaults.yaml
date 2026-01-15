@@ -8,13 +8,15 @@ response_types:
   terminal_states: []
   # Add your terminal response types here
   # Example:
-  # - interview
-  # - proposals
+  # - completed
   # - error
+  # - awaiting_input
 
-interview: {}
-  # Add interview configurations here
+features: {}
+  # Add feature configurations here
   # Example:
-  # my_interviewer:
+  # my_workflow:
   #   max_turns: 10
-  #   max_questions: 5
+  #   max_items: 5
+  #   extra:
+  #     custom_setting: value

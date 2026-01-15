@@ -20,7 +20,7 @@ class RuntimeHooks(Protocol):
         >>> class MyHooks:
         ...     async def prepare_state(self, state, request):
         ...         # Add custom data to state
-        ...         state = Internal.active_mode.set(state, "shopping")
+        ...         state = Internal.active_mode.set(state, "orders")
         ...         return state
         ...     
         ...     async def after_execution(self, state, result):

@@ -5,7 +5,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![CI](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/yatarousan0227/agent-contracts/actions/workflows/ci.yml)
-![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)
 [![Documentation](https://img.shields.io/badge/docs-GitHub_Pages-blue.svg)](https://yatarousan0227.github.io/agent-contracts/)
 
 [English](README.md) | 日本語
@@ -112,29 +112,57 @@ Supervisor は以下の方法で自動的に豊富な LLM コンテキストを�
 値を返すだけのシンプルなノードを定義します。
 
 ```python
-from agent_contracts import ModularNode, NodeContract, NodeInputs, NodeOutputs
+import asyncio
+
+from agent_contracts import (
+    BaseAgentState,
+    ModularNode,
+    NodeContract,
+    NodeInputs,
+    NodeOutputs,
+    TriggerCondition,
+)
 from agent_contracts import get_node_registry, build_graph_from_registry
 
 # 1. ノードの定義
 class HelloNode(ModularNode):
     CONTRACT = NodeContract(
         name="hello",
+        description="Helloメッセージを返す",
+        reads=["request"],
         writes=["response"],
-        trigger_conditions=[{"priority": 100}]  # 常に最優先でトリガー
+        supervisor="main",
+        trigger_conditions=[TriggerCondition(priority=100)],  # 常に最優先でトリガー
+        is_terminal=True,  # このノードの後にフローを終了
     )
 
     async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
-        return NodeOutputs(response={"message": "Hello World!"})
+        return NodeOutputs(
+            response={
+                "response_type": "done",
+                "response_message": "Hello World!",
+            }
+        )
 
-# 2. 登録とビルド
-registry = get_node_registry()
-registry.register(HelloNode)
+async def main() -> None:
+    # 2. 登録とビルド
+    registry = get_node_registry()
+    registry.register(HelloNode)
 
-graph = build_graph_from_registry(registry=registry, supervisors=["main"])
-compiled = graph.compile()
+    graph = build_graph_from_registry(
+        registry=registry,
+        supervisors=["main"],
+        state_class=BaseAgentState,
+    )
+    graph.set_entry_point("main_supervisor")  # LangGraphのコンパイルに必要
+    compiled = graph.compile()
 
 # 3. 実行
-print(await compiled.ainvoke({"input": "start"}))
+    result = await compiled.ainvoke({"request": {"action": "start"}})
+    print(result["response"])
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### 2. Practical Example (ルーティング)
@@ -148,6 +176,10 @@ from agent_contracts import ModularNode, NodeContract, TriggerCondition
 class WeatherNode(ModularNode):
     CONTRACT = NodeContract(
         name="weather_agent",
+        description="天気関連のリクエストを処理",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         requires_llm=True,
         trigger_conditions=[
             TriggerCondition(
@@ -162,6 +194,10 @@ class WeatherNode(ModularNode):
 class UrgentNode(ModularNode):
     CONTRACT = NodeContract(
         name="urgent_agent",
+        description="緊急/高優先度リクエストを処理",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 when={"request.priority": "high"},
@@ -218,7 +254,16 @@ NodeContract(
 from agent_contracts import InteractiveNode
 
 class InterviewNode(InteractiveNode):
-    CONTRACT = NodeContract(...)
+    CONTRACT = NodeContract(
+        name="interview",
+        description="会話型ワークフローノード",
+        reads=["request", "_internal"],
+        writes=["response", "_internal"],
+        supervisor="main",
+        trigger_conditions=[
+            TriggerCondition(priority=10, llm_hint="会話型ワークフローに使用"),
+        ],
+    )
     
     def prepare_context(self, inputs):
         """入力からコンテキストを抽出"""
@@ -235,7 +280,12 @@ class InterviewNode(InteractiveNode):
     
     async def generate_question(self, context, inputs):
         """次の質問を生成"""
-        return NodeOutputs(response={"question": "..."})
+        return NodeOutputs(
+            response={
+                "response_type": "question",
+                "response_data": {"question": "..."},
+            }
+        )
 ```
 
 ### State Accessor

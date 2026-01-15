@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 
-from agent_contracts.registry import NodeRegistry, get_node_registry
+from agent_contracts.registry import NodeRegistry, TriggerMatch, get_node_registry
 from agent_contracts.config import get_config
 from agent_contracts.utils.logging import get_logger
 from agent_contracts.utils.sanitize_context import sanitize_for_llm_util
@@ -40,7 +40,7 @@ class ContextBuilderResult(TypedDict, total=False):
 
 
 class ContextBuilder(Protocol):
-    """Supervisor用のコンテキスト構築プロトコル。
+    """Protocol for building context for LLM routing decisions.
     
     Allows customization of which state slices and additional context
     are passed to LLM for routing decisions.
@@ -56,7 +56,7 @@ class ContextBuilder(Protocol):
             }
         
         supervisor = GenericSupervisor(
-            supervisor_name="shopping",
+            supervisor_name="workflow",
             llm=llm,
             context_builder=my_context_builder,
         )
@@ -82,6 +82,42 @@ class ContextBuilder(Protocol):
         ...
 
 
+class ExplicitRoutingHandler(Protocol):
+    """Protocol for explicit routing (e.g., return-to-sender patterns).
+    
+    Allows applications to implement domain-specific routing logic that
+    bypasses normal trigger evaluation.
+    
+    Example:
+        def interview_router(state: dict) -> str | None:
+            '''Route answers back to the node that asked the question.'''
+            req = state.get("request", {})
+            if req.get("action") == "answer":
+                interview = state.get("interview", {})
+                last_q = interview.get("last_question", {})
+                if isinstance(last_q, dict):
+                    return last_q.get("node_id")
+            return None
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="workflow",
+            llm=llm,
+            explicit_routing_handler=interview_router,
+        )
+    """
+    
+    def __call__(self, state: dict) -> str | None:
+        """Determine explicit routing target.
+        
+        Args:
+            state: Current agent state
+            
+        Returns:
+            Node name to route to, or None to continue with normal routing.
+        """  
+        ...
+
+
 class GenericSupervisor:
     """Generic Supervisor.
     
@@ -89,7 +125,7 @@ class GenericSupervisor:
     evaluates conditions from NodeRegistry.
     
     Example:
-        supervisor = GenericSupervisor("shopping", llm=llm)
+        supervisor = GenericSupervisor("orders", llm=llm)
         decision = await supervisor.decide(state)
     """
     
@@ -102,6 +138,7 @@ class GenericSupervisor:
         terminal_response_types: set[str] | None = None,
         context_builder: ContextBuilder | None = None,
         max_field_length: int | None = None,
+        explicit_routing_handler: ExplicitRoutingHandler | None = None,
     ):
         """Initialize.
         
@@ -115,7 +152,11 @@ class GenericSupervisor:
                 If provided, allows customization of which state slices and
                 additional context are passed to LLM for routing decisions.
                 If omitted, uses default behavior (request, response, _internal only).
-            max_field_length: Maximum field length for sanitization (default: 1000)
+            max_field_length: Maximum field length for sanitization (default: 10000)
+            explicit_routing_handler: Custom handler for explicit routing (optional).
+                If provided, called before trigger evaluation. If handler returns
+                a node name, that node is selected immediately. Useful for
+                return-to-sender patterns (e.g., routing answers to question askers).
         """
         self.name = supervisor_name
         self.llm = llm
@@ -123,6 +164,7 @@ class GenericSupervisor:
         self.logger = logger
         self.context_builder = context_builder
         self.max_field_length = max_field_length or 10000
+        self.explicit_routing_handler = explicit_routing_handler
         
         # Load from config or use defaults
         config = get_config()
@@ -199,7 +241,7 @@ class GenericSupervisor:
         
         return None
     
-    def _select_top_matches(self, matches: list[tuple[int, str]]) -> list[str]:
+    def _select_top_matches(self, matches: list[TriggerMatch]) -> list[str]:
         """Select top candidates handling ties (Top 3 + Ties)."""
         if not matches:
             return []
@@ -208,12 +250,12 @@ class GenericSupervisor:
         limit = 3
         last_prio = -1
         
-        for i, (prio, name) in enumerate(matches):
+        for i, match in enumerate(matches):
             if i < limit:
-                selected.append(name)
-                last_prio = prio
-            elif prio == last_prio:
-                selected.append(name)
+                selected.append(match.node_name)
+                last_prio = match.priority
+            elif match.priority == last_prio:
+                selected.append(match.node_name)
             else:
                 break
         return selected
@@ -262,46 +304,41 @@ class GenericSupervisor:
     
     def _format_rule_candidates_with_reasons(
         self,
-        matches: list[tuple[int, str]],
+        matches: list[TriggerMatch],
         candidates: list[str],
     ) -> str:
         """Format rule candidates with match reasons for LLM context.
         
         Example output:
-            - appearance_analyst (P95): matched because request.user_image=True
-            - interview_strategy (P90): matched because request.request_action=create_card
+            - data_processor (P95): matched because request.has_data=True
+            - workflow_handler (P90): matched because request.action=process
         """
         if not candidates:
             return "(none)"
         
         lines = []
-        for priority, node_name in matches:
-            if node_name not in candidates:
+        for match in matches:
+            if match.node_name not in candidates:
                 continue
             
-            contract = self.registry.get_contract(node_name)
+            contract = self.registry.get_contract(match.node_name)
             if not contract:
-                lines.append(f"- {node_name} (P{priority})")
+                lines.append(f"- {match.node_name} (P{match.priority})")
                 continue
             
-            # Find the matching condition
+            # Use the actual matched condition
+            condition = contract.trigger_conditions[match.condition_index]
             condition_str = ""
-            for condition in contract.trigger_conditions:
-                if condition.priority == priority:
-                    if condition.when:
-                        parts = [f"{k}={v}" for k, v in condition.when.items()]
-                        condition_str = " AND ".join(parts)
-                    elif condition.when_not:
-                        parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
-                        condition_str = " AND ".join(parts)
-                    else:
-                        condition_str = "(always)"
-                    break
-            
-            if condition_str:
-                lines.append(f"- {node_name} (P{priority}): matched because {condition_str}")
+            if condition.when:
+                parts = [f"{k}={v}" for k, v in condition.when.items()]
+                condition_str = " AND ".join(parts)
+            elif condition.when_not:
+                parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
+                condition_str = " AND ".join(parts)
             else:
-                lines.append(f"- {node_name} (P{priority})")
+                condition_str = "(always)"
+            
+            lines.append(f"- {match.node_name} (P{match.priority}): matched because {condition_str}")
         
         return "\n".join(lines) if lines else "(none)"
     
@@ -329,7 +366,7 @@ class GenericSupervisor:
     async def _decide_with_llm(
         self,
         state: dict,
-        matches: list[tuple[int, str]],
+        matches: list[TriggerMatch],
         rule_candidates: list[str],
         child_decision: str | None,
         config: Optional[RunnableConfig] = None,
@@ -413,34 +450,32 @@ Last active node suggested: {child_decision or 'None'}
     
     def _build_matched_rules(
         self,
-        matches: list[tuple[int, str]],
+        matches: list[TriggerMatch],
     ) -> list[MatchedRule]:
         """Build MatchedRule list from trigger matches."""
         matched_rules = []
         
-        for priority, node_name in matches:
-            contract = self.registry.get_contract(node_name)
+        for match in matches:
+            contract = self.registry.get_contract(match.node_name)
             if not contract:
                 continue
             
-            # Find the matching condition description
+            # Use the actual matched condition
+            condition = contract.trigger_conditions[match.condition_index]
             condition_str = ""
-            for condition in contract.trigger_conditions:
-                if condition.priority == priority:
-                    if condition.when:
-                        parts = [f"{k}={v}" for k, v in condition.when.items()]
-                        condition_str = " AND ".join(parts)
-                    elif condition.when_not:
-                        parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
-                        condition_str = " AND ".join(parts)
-                    else:
-                        condition_str = "(always)"
-                    break
+            if condition.when:
+                parts = [f"{k}={v}" for k, v in condition.when.items()]
+                condition_str = " AND ".join(parts)
+            elif condition.when_not:
+                parts = [f"NOT {k}={v}" for k, v in condition.when_not.items()]
+                condition_str = " AND ".join(parts)
+            else:
+                condition_str = "(always)"
             
             matched_rules.append(MatchedRule(
-                node=node_name,
+                node=match.node_name,
                 condition=condition_str or "(unknown)",
-                priority=priority,
+                priority=match.priority,
             ))
         
         return matched_rules
@@ -484,25 +519,25 @@ Last active node suggested: {child_decision or 'None'}
                 reason=RoutingReason(decision_type="terminal_state")
             )
         
-        # Phase 0.5: Explicit Routing (Return to Sender)
-        req = state.get("request", {})
-        action = req.get("action") if isinstance(req, dict) else None
-        
-        if action == "answer":
-            interview = state.get("interview", {})
-            lq = interview.get("last_question") if isinstance(interview, dict) else None
-            node_id = None
-            if lq:
-                if isinstance(lq, dict):
-                    node_id = lq.get("node_id")
+        # Phase 0.5: Explicit Routing (via pluggable handler)
+        if self.explicit_routing_handler:
+            explicit_target = self.explicit_routing_handler(state)
+            if explicit_target:
+                # Validate that the explicit target is a valid node
+                valid_nodes = set(self.registry.get_supervisor_nodes(self.name))
+                valid_nodes.add("done")
+                
+                if explicit_target not in valid_nodes:
+                    self.logger.warning(
+                        f"explicit_routing_handler returned invalid node: '{explicit_target}', "
+                        f"valid nodes: {valid_nodes}. Falling back to normal routing."
+                    )
+                    # Fall through to normal routing instead of using invalid node
                 else:
-                    node_id = getattr(lq, "node_id", None)
-            
-            if node_id:
-                return RoutingDecision(
-                    selected_node=node_id,
-                    reason=RoutingReason(decision_type="explicit_routing")
-                )
+                    return RoutingDecision(
+                        selected_node=explicit_target,
+                        reason=RoutingReason(decision_type="explicit_routing")
+                    )
 
         # Phase 1: Rule-based evaluation
         matches = self.registry.evaluate_triggers(self.name, state)
@@ -542,7 +577,7 @@ Last active node suggested: {child_decision or 'None'}
         # Phase 3: Fallback
         if matches:
             return RoutingDecision(
-                selected_node=matches[0][1],
+                selected_node=matches[0].node_name,
                 reason=RoutingReason(
                     decision_type="rule_match",
                     matched_rules=matched_rules,

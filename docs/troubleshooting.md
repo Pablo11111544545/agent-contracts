@@ -23,11 +23,11 @@ registry.add_valid_slice("your_slice_name")
 **Prevention**:
 ```python
 # Define slice names as constants
-SLICE_SHOPPING = "shopping"
-SLICE_INTERVIEW = "interview"
+SLICE_ORDERS = "orders"
+SLICE_WORKFLOW = "workflow"
 
 # Use constants in contracts
-reads=[SLICE_SHOPPING]
+reads=[SLICE_ORDERS]
 ```
 
 ---
@@ -174,17 +174,29 @@ for rule in decision.reason.matched_rules:
 1. **Check terminal states**
    ```python
    # Make sure your response types are in terminal_states
-   terminal_response_types={"interview", "results", "error"}
+   terminal_response_types={"question", "results", "error"}
    
    # And your node outputs matching types
-   return NodeOutputs(response={"response_type": "results", ...})
+   return NodeOutputs(
+       response={
+           "response_type": "results",
+           "response_data": {"items": [1, 2, 3]},
+       }
+   )
    ```
 
 2. **Set is_terminal on appropriate nodes**
    ```python
-   CONTRACT = NodeContract(
-       is_terminal=True,  # Force END after this node
-   )
+   class ResultNode(ModularNode):
+       CONTRACT = NodeContract(
+           name="result",
+           description="Returns the final result and ends the flow",
+           reads=["request"],
+           writes=["response"],
+           supervisor="main",
+           trigger_conditions=[TriggerCondition(priority=10)],
+           is_terminal=True,  # Force END after this node
+       )
    ```
 
 3. **Increase max_iterations during debugging**
@@ -203,11 +215,11 @@ for rule in decision.reason.matched_rules:
 **Solution**:
 ```python
 # Contract declares
-writes=["shopping"]
+writes=["orders"]
 
 # Execute must return matching slice
 return NodeOutputs(
-    shopping={"cart": [...]},  # ✅ Correct
+    orders={"cart": [...]},  # ✅ Correct
     # Not: response={"cart": [...]}  # ❌ Wrong slice
 )
 ```
@@ -222,7 +234,11 @@ return NodeOutputs(
 ```python
 # If you need data from 'context' slice
 CONTRACT = NodeContract(
+    name="my_node",
+    description="Example node that needs context slice",
     reads=["request", "context"],  # Include 'context'
+    writes=["response"],
+    supervisor="main",
 )
 
 async def execute(self, inputs, config=None):
@@ -256,7 +272,7 @@ supervisor:
 
 response_types:
   terminal_states:
-    - interview
+    - question
     - results
 ```
 
@@ -269,7 +285,7 @@ response_types:
 # In agent_config.yaml
 response_types:
   terminal_states:
-    - interview    # Must match response_type exactly
+    - question    # Must match response_type exactly
     - results
     - error
 ```
@@ -279,8 +295,8 @@ response_types:
 # Must match exactly
 return NodeOutputs(
     response={
-        "response_type": "interview",  # Exact match
-        # Not "Interview" or "INTERVIEW"
+        "response_type": "question",  # Exact match
+        # Not "Question" or "QUESTION"
     }
 )
 ```
@@ -420,6 +436,39 @@ def clean_registry():
 - Use references/URLs instead of embedding data
 - Leverage automatic sanitization (v0.3.3+)
 - Use minimal context in `context_builder`
+
+---
+
+## Migration Issues
+
+### "TypeError: 'TriggerMatch' object is not subscriptable" (v0.4.0)
+
+**Cause**: Code using `evaluate_triggers()` directly assumes v0.3.x `tuple` format
+
+**Symptoms**:
+```python
+# v0.3.x format code
+matches = registry.evaluate_triggers("main", state)
+priority, node_name = matches[0]  # Error!
+```
+
+**Solution**:
+```python
+# Update to v0.4.0 format
+matches = registry.evaluate_triggers("main", state)
+match = matches[0]
+priority = match.priority
+node_name = match.node_name
+condition_index = match.condition_index  # New feature!
+```
+
+**Affected Code:**
+- Direct calls to `evaluate_triggers()`
+- Processing results of `registry.evaluate_triggers()`
+
+**Unaffected Code:**
+- Using `GenericSupervisor` only
+- Using `decide()` or `decide_with_trace()` only
 
 ---
 

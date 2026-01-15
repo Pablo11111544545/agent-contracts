@@ -64,19 +64,19 @@ class TestMergeSession:
         assert result["interview"]["history"] == ["q1"]
 
     def test_default_slices(self):
-        """Uses default slices when not specified."""
+        """Uses default slices when not specified (only _internal now)."""
         state = {}
         session = {
-            "_internal": {"active_mode": "shopping"},
-            "interview": {"data": "test"},
-            "shopping": {"context": {}},
+            "_internal": {"active_mode": "orders"},
+            "workflow": {"data": "test"},
         }
         
         result = merge_session(state, session)
         
-        assert result["_internal"]["active_mode"] == "shopping"
-        assert result["interview"]["data"] == "test"
-        assert "context" in result["shopping"]
+        # Default only merges _internal
+        assert result["_internal"]["active_mode"] == "orders"
+        # Other slices not merged by default
+        assert "workflow" not in result
 
     def test_ignores_missing_session_slices(self):
         """Does not add slices that aren't in session data."""

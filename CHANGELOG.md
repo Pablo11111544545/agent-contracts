@@ -5,6 +5,79 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-14
+
+### Breaking Changes
+- **Registry**: `evaluate_triggers()` now returns `list[TriggerMatch]` instead of `list[tuple[int, str]]` ([#XXX])
+  - `TriggerMatch` dataclass tracks which specific condition matched
+  - Enables accurate condition explanation in supervisor routing
+  - Migration: Update code using `evaluate_triggers()` directly (see docs)
+
+- **Supervisor**: Explicit routing handler refactoring ([#XXX])
+  - Removed hardcoded `if action == "answer"` logic from `GenericSupervisor._decide_with_trace()`
+  - New `explicit_routing_handler` parameter for pluggable routing logic
+  - Migration: Pass custom handler to `GenericSupervisor`:
+    ```python
+    def my_router(state: dict) -> str | None:
+        if state.get("request", {}).get("action") == "answer":
+            return state.get("interview", {}).get("last_question", {}).get("node_id")
+        return None
+    
+    supervisor = GenericSupervisor(
+        supervisor_name="main",
+        llm=llm,
+        explicit_routing_handler=my_router,
+    )
+    ```
+
+- **Runtime**: Default `slices_to_restore` changed ([#XXX])
+  - Before: `["_internal", "interview", "shopping"]`
+  - After: `["_internal"]` only
+  - Migration: Explicitly specify slices when creating runtime:
+    ```python
+    runtime = AgentRuntime(
+        graph=graph,
+        slices_to_restore=["_internal", "interview", "shopping"],
+    )
+    ```
+
+- **Config**: `InterviewConfig` renamed to `FeatureConfig` ([#XXX])
+  - `interview:` key in YAML changed to `features:`
+  - `max_questions` field changed to `max_items`
+  - Migration: Update YAML config and imports
+
+### Added
+- **Registry**: New `TriggerMatch` dataclass with `priority`, `node_name`, and `condition_index` fields
+- **Supervisor**: New `ContextBuilderResult` TypedDict for better type safety
+- **Supervisor**: New `ExplicitRoutingHandler` Protocol for custom routing logic
+- **Contracts**: New `icon` field in `NodeContract` for custom visualization icons
+
+### Fixed
+- **Supervisor**: Fixed dead code issue - `_collect_context_slices()` is now properly used ([#XXX])
+- **Supervisor**: Fixed type inconsistencies in `ContextBuilder` Protocol ([#XXX])
+  - Added normalization to convert list to set for slices
+  - Documented str/dict support for summary field
+- **Supervisor**: Fixed incorrect condition explanation when multiple conditions have same priority ([#XXX])
+  - Now uses actual matched condition instead of first found condition
+
+### Changed
+- **Visualizer**: Removed domain-specific icon patterns (`interview`, `like`, `card`)
+  - Uses `NodeContract.icon` field for custom icons
+  - Generic fallback patterns: `search`, `process`, `validate`, `notify`
+- **Docs**: Updated all examples to use generic terminology
+  - `interview` → `workflow`, `shopping` → `orders`, `card` → `notifications`
+
+### Improved
+- **Type Safety**: Better type hints and IDE support for ContextBuilder
+- **Maintainability**: Eliminated code duplication in context collection
+- **Accuracy**: More accurate routing explanations for LLM decision making
+- **OSS Ready**: Library now domain-agnostic, ready for general use
+
+### Documentation
+- Added migration guide for v0.4.0 breaking changes
+- Added implementation summary: `docs/supervisor_code_review_implementation.md`
+- Updated `core_concepts.md`, `best_practices.md`, `troubleshooting.md` with generic examples
+
 ## [0.3.3] - 2026-01-14
 
 ### Added

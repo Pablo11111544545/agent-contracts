@@ -16,8 +16,8 @@ class TestConfig:
         config_data = {
             "supervisor": {"max_iterations": 20},
             "response_types": {"terminal_states": ["done", "error"]},
-            "interview": {
-                "shopping": {"max_turns": 5, "max_questions": 3}
+            "features": {
+                "orders": {"max_turns": 5, "max_items": 3}
             }
         }
         
@@ -32,7 +32,7 @@ class TestConfig:
         
         assert current_config.supervisor.max_iterations == 20
         assert current_config.supervisor.terminal_response_types == ["done", "error"]
-        assert current_config.interview["shopping"].max_turns == 5
+        assert current_config.features["orders"].max_turns == 5
 
     def test_load_nonexistent_file(self, clean_config):
         """Test error when loading missing file."""

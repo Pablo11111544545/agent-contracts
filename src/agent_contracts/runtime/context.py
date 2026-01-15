@@ -59,7 +59,7 @@ class ExecutionResult:
     
     Attributes:
         state: The final state after graph execution
-        response_type: Type of response (e.g., "interview", "proposals")
+        response_type: Type of response (e.g., "question", "result")
         response_data: Response payload data
         response_message: Optional response message
         success: Whether execution completed successfully
@@ -68,8 +68,8 @@ class ExecutionResult:
     Example:
         >>> result = ExecutionResult(
         ...     state=final_state,
-        ...     response_type="interview",
-        ...     response_data={"question": "What's your style?"},
+        ...     response_type="question",
+        ...     response_data={"question": "What's your preference?"},
         ... )
     """
     state: dict[str, Any]
@@ -119,6 +119,8 @@ class ExecutionResult:
     def to_response_dict(self) -> dict[str, Any]:
         """Convert to API response dictionary.
         
+        Note: response_type takes precedence over any 'type' key in response_data.
+        
         Returns:
             Dict suitable for API response
         """
@@ -127,7 +129,8 @@ class ExecutionResult:
                 "type": "error",
                 "error": self.error,
             }
-        return {
-            "type": self.response_type or "unknown",
-            **(self.response_data or {}),
-        }
+        # Expand response_data first, then override with response_type to prevent
+        # accidental overwriting if response_data contains a 'type' key
+        result = dict(self.response_data or {})
+        result["type"] = self.response_type or "unknown"
+        return result

@@ -111,8 +111,8 @@ state = {
 You can define custom slices:
 
 ```python
-registry.add_valid_slice("shopping")
-registry.add_valid_slice("interview")
+registry.add_valid_slice("orders")
+registry.add_valid_slice("workflow")
 ```
 
 ---
@@ -196,8 +196,8 @@ supervisor = GenericSupervisor(
 │  1. Terminal State Check                                     │
 │     └─ If response_type in terminal_states → done            │
 │                                                              │
-│  2. Explicit Routing                                         │
-│     └─ If action="answer" → route to question owner          │
+│  2. Explicit Routing (via handler)                            │
+│     └─ custom routing via explicit_routing_handler             │
 │                                                              │
 │  3. Rule-Based Evaluation                                    │
 │     └─ Evaluate all TriggerConditions, collect candidates    │
@@ -224,18 +224,27 @@ supervisor = GenericSupervisor(
 For conversational agents, use `InteractiveNode`:
 
 ```python
-from agent_contracts import InteractiveNode
+from agent_contracts import InteractiveNode, NodeContract, NodeOutputs, TriggerCondition
 
 
-class InterviewNode(InteractiveNode):
-    CONTRACT = NodeContract(...)
+class QuestionerNode(InteractiveNode):
+    CONTRACT = NodeContract(
+        name="questioner",
+        description="Asks questions and processes answers",
+        reads=["request", "workflow"],
+        writes=["response", "workflow", "_internal"],
+        supervisor="main",
+        trigger_conditions=[
+            TriggerCondition(priority=10, llm_hint="Use to ask the next question"),
+        ],
+    )
     
     def prepare_context(self, inputs):
         """Extract context from inputs."""
-        return inputs.get_slice("interview")
+        return inputs.get_slice("workflow")
     
     def check_completion(self, context, inputs):
-        """Check if interview is complete."""
+        """Check if questionnaire is complete."""
         return len(context.get("answers", [])) >= 5
     
     async def process_answer(self, context, inputs, config=None):
@@ -247,7 +256,12 @@ class InterviewNode(InteractiveNode):
     async def generate_question(self, context, inputs, config=None):
         """Generate next question."""
         # Generate question with LLM...
-        return NodeOutputs(response={"question": "What color?"})
+        return NodeOutputs(
+            response={
+                "response_type": "question",
+                "response_data": {"question": "What color?"},
+            }
+        )
 ```
 
 ### Lifecycle
@@ -322,6 +336,43 @@ for rule in decision.reason.matched_rules:
 | `llm_decision` | LLM made the choice |
 | `fallback` | No match, using default |
 
+### TriggerMatch Structure (v0.4.0+)
+
+Starting from v0.4.0, `evaluate_triggers()` returns `TriggerMatch` objects:
+
+```python
+from agent_contracts import TriggerMatch
+
+# evaluate_triggers() return value
+matches: list[TriggerMatch] = registry.evaluate_triggers("supervisor_name", state)
+
+for match in matches:
+    print(f"Node: {match.node_name}")
+    print(f"Priority: {match.priority}")
+    print(f"Condition Index: {match.condition_index}")  # The actual matched condition
+```
+
+**Benefits:**
+- Accurately identifies which condition matched, even with multiple conditions at the same priority
+- Provides more precise explanations for LLM routing
+- Improves debugging and traceability
+
+**Migration (v0.3.x → v0.4.0):**
+
+```python
+# v0.3.x - tuple format
+matches: list[tuple[int, str]] = registry.evaluate_triggers("main", state)
+for priority, node_name in matches:
+    print(f"{node_name}: P{priority}")
+
+# v0.4.0 - TriggerMatch format
+matches: list[TriggerMatch] = registry.evaluate_triggers("main", state)
+for match in matches:
+    print(f"{match.node_name}: P{match.priority}")
+```
+
+**Note:** If you're using `GenericSupervisor` or `decide()`/`decide_with_trace()`, no changes are required.
+
 
 ## Supervisor Context Building
 
@@ -359,7 +410,7 @@ def my_context_builder(state: dict, candidates: list[str]) -> dict:
     }
 
 supervisor = GenericSupervisor(
-    supervisor_name="shopping",
+    supervisor_name="orders",
     llm=llm,
     context_builder=my_context_builder,
 )
@@ -383,7 +434,7 @@ def context_builder(state, candidates):
         "slices": {"request", "response", "conversation"},
         "summary": {
             "turn_count": 5,
-            "topics": ["shopping", "preferences"]
+            "topics": ["orders", "preferences"]
         }
     }
 ```
@@ -411,7 +462,7 @@ def supervisor_factory(name: str, llm):
 graph = build_graph_from_registry(
     llm_provider=get_llm,
     supervisor_factory=supervisor_factory,  # Inject custom supervisors
-    supervisors=["card", "shopping"],
+    supervisors=["orders", "notifications"],
 )
 ```
 
@@ -446,7 +497,7 @@ class ContextBuilder(Protocol):
 | **E-commerce** | Include `cart`, `inventory` for purchase-aware routing |
 | **Customer Support** | Include `ticket_history`, `sentiment` for context-aware responses |
 | **Education** | Include `learning_progress`, `pace` for adaptive tutoring |
-| **Conversation** | Include `conversation` with turn counts and history |
+| **Workflow** | Include `conversation` with turn counts and history |
 
 ### Example: Conversation-Aware Routing
 

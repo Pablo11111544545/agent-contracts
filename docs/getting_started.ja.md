@@ -47,6 +47,7 @@ class GreetingNode(ModularNode):
         reads=["request"],           # 'request'スライスから読み取り
         writes=["response"],         # 'response'スライスに書き込み
         supervisor="main",           # 'main'スーパーバイザーに所属
+        is_terminal=True,            # このノードの後にフローを終了
         trigger_conditions=[
             TriggerCondition(
                 priority=10,
@@ -65,7 +66,7 @@ class GreetingNode(ModularNode):
         return NodeOutputs(
             response={
                 "response_type": "greeting",
-                "message": f"こんにちは、{name}さん！",
+                "response_message": f"こんにちは、{name}さん！",
             }
         )
 ```
@@ -77,7 +78,7 @@ class GreetingNode(ModularNode):
 ノードを登録してLangGraphを構築：
 
 ```python
-from agent_contracts import get_node_registry, build_graph_from_registry
+from agent_contracts import BaseAgentState, get_node_registry, build_graph_from_registry
 from langchain_openai import ChatOpenAI
 
 
@@ -93,9 +94,11 @@ graph = build_graph_from_registry(
     registry=registry,
     llm=llm,
     supervisors=["main"],
+    state_class=BaseAgentState,
 )
 
-# 実行用にコンパイル
+# エントリーポイント設定してコンパイル
+graph.set_entry_point("main_supervisor")
 compiled = graph.compile()
 ```
 
@@ -116,7 +119,7 @@ async def main():
     })
     
     print(result["response"])
-    # 出力: {'response_type': 'greeting', 'message': 'こんにちは、太郎さん！'}
+    # 出力: {'response_type': 'greeting', 'response_message': 'こんにちは、太郎さん！'}
 
 
 if __name__ == "__main__":

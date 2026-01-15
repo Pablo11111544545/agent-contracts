@@ -16,7 +16,7 @@ from agent_contracts.contracts import (
     NodeOutputs,
 )
 from agent_contracts.node import ModularNode, InteractiveNode
-from agent_contracts.registry import NodeRegistry, get_node_registry, reset_registry
+from agent_contracts.registry import NodeRegistry, TriggerMatch, get_node_registry, reset_registry
 from agent_contracts.supervisor import (
     GenericSupervisor,
     SupervisorDecision,
@@ -58,7 +58,7 @@ from agent_contracts.runtime import (
     AgentRuntime,
 )
 
-__version__ = "0.3.3"
+__version__ = "0.4.0"
 
 __all__ = [
     # Version
@@ -73,6 +73,7 @@ __all__ = [
     "InteractiveNode",
     # Registry
     "NodeRegistry",
+    "TriggerMatch",
     "get_node_registry",
     "reset_registry",
     # Supervisor

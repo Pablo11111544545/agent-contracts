@@ -47,6 +47,7 @@ class GreetingNode(ModularNode):
         reads=["request"],           # Read from 'request' slice
         writes=["response"],         # Write to 'response' slice
         supervisor="main",           # Belongs to 'main' supervisor
+        is_terminal=True,            # End the flow after this node
         trigger_conditions=[
             TriggerCondition(
                 priority=10,
@@ -65,7 +66,7 @@ class GreetingNode(ModularNode):
         return NodeOutputs(
             response={
                 "response_type": "greeting",
-                "message": f"Hello, {name}!",
+                "response_message": f"Hello, {name}!",
             }
         )
 ```
@@ -77,7 +78,7 @@ class GreetingNode(ModularNode):
 Register the node and build a LangGraph:
 
 ```python
-from agent_contracts import get_node_registry, build_graph_from_registry
+from agent_contracts import BaseAgentState, get_node_registry, build_graph_from_registry
 from langchain_openai import ChatOpenAI
 
 
@@ -93,9 +94,11 @@ graph = build_graph_from_registry(
     registry=registry,
     llm=llm,
     supervisors=["main"],
+    state_class=BaseAgentState,
 )
 
-# Compile for execution
+# Set entrypoint and compile for execution
+graph.set_entry_point("main_supervisor")
 compiled = graph.compile()
 ```
 
@@ -116,7 +119,7 @@ async def main():
     })
     
     print(result["response"])
-    # Output: {'response_type': 'greeting', 'message': 'Hello, Alice!'}
+    # Output: {'response_type': 'greeting', 'response_message': 'Hello, Alice!'}
 
 
 if __name__ == "__main__":

@@ -259,10 +259,15 @@ class TestAgentRuntime:
         
         store = InMemorySessionStore()
         await store.save("session1", {
-            "interview": {"collected_info": {"name": "Alice"}},
+            "workflow": {"collected_info": {"name": "Alice"}},
         })
         
-        runtime = AgentRuntime(graph=mock_graph, session_store=store)
+        # Need to explicitly specify slices_to_restore now
+        runtime = AgentRuntime(
+            graph=mock_graph,
+            session_store=store,
+            slices_to_restore=["_internal", "workflow"],
+        )
         await runtime.execute(RequestContext(
             session_id="session1",
             action="answer",
@@ -271,7 +276,7 @@ class TestAgentRuntime:
         
         # Check that graph was called with merged state
         call_args = mock_graph.ainvoke.call_args[0][0]
-        assert call_args.get("interview", {}).get("collected_info") == {"name": "Alice"}
+        assert call_args.get("workflow", {}).get("collected_info") == {"name": "Alice"}
 
     @pytest.mark.asyncio
     async def test_execute_with_hooks(self):
