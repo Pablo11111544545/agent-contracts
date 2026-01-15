@@ -112,29 +112,57 @@ The `StateSummarizer` intelligently handles complex nested data:
 Define a simple node that just returns a value.
 
 ```python
-from agent_contracts import ModularNode, NodeContract, NodeInputs, NodeOutputs
+import asyncio
+
+from agent_contracts import (
+    BaseAgentState,
+    ModularNode,
+    NodeContract,
+    NodeInputs,
+    NodeOutputs,
+    TriggerCondition,
+)
 from agent_contracts import get_node_registry, build_graph_from_registry
 
 # 1. Define a Node
 class HelloNode(ModularNode):
     CONTRACT = NodeContract(
         name="hello",
+        description="Returns a hello message",
+        reads=["request"],
         writes=["response"],
-        trigger_conditions=[{"priority": 100}]  # Always trigger first
+        supervisor="main",
+        trigger_conditions=[TriggerCondition(priority=100)],  # Always trigger first
+        is_terminal=True,  # End the flow after this node
     )
 
     async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
-        return NodeOutputs(response={"message": "Hello World!"})
+        return NodeOutputs(
+            response={
+                "response_type": "done",
+                "response_message": "Hello World!",
+            }
+        )
 
-# 2. Register & Build
-registry = get_node_registry()
-registry.register(HelloNode)
+async def main() -> None:
+    # 2. Register & Build
+    registry = get_node_registry()
+    registry.register(HelloNode)
 
-graph = build_graph_from_registry(registry=registry, supervisors=["main"])
-compiled = graph.compile()
+    graph = build_graph_from_registry(
+        registry=registry,
+        supervisors=["main"],
+        state_class=BaseAgentState,
+    )
+    graph.set_entry_point("main_supervisor")  # required for LangGraph compilation
+    compiled = graph.compile()
 
 # 3. Run
-print(await compiled.ainvoke({"input": "start"}))
+    result = await compiled.ainvoke({"request": {"action": "start"}})
+    print(result["response"])
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### 2. Practical Example (Routing)
@@ -148,6 +176,10 @@ from agent_contracts import ModularNode, NodeContract, TriggerCondition
 class WeatherNode(ModularNode):
     CONTRACT = NodeContract(
         name="weather_agent",
+        description="Handles weather-related requests",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         requires_llm=True,
         trigger_conditions=[
             TriggerCondition(
@@ -162,6 +194,10 @@ class WeatherNode(ModularNode):
 class UrgentNode(ModularNode):
     CONTRACT = NodeContract(
         name="urgent_agent",
+        description="Handles urgent/high-priority requests",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 when={"request.priority": "high"},
@@ -218,7 +254,16 @@ For conversational agents, you can extend `InteractiveNode`, which provides a st
 from agent_contracts import InteractiveNode
 
 class InterviewNode(InteractiveNode):
-    CONTRACT = NodeContract(...)
+    CONTRACT = NodeContract(
+        name="interview",
+        description="Conversational workflow node",
+        reads=["request", "_internal"],
+        writes=["response", "_internal"],
+        supervisor="main",
+        trigger_conditions=[
+            TriggerCondition(priority=10, llm_hint="Use for conversational workflows"),
+        ],
+    )
     
     def prepare_context(self, inputs):
         """Extract context from inputs."""
@@ -235,7 +280,12 @@ class InterviewNode(InteractiveNode):
     
     async def generate_question(self, context, inputs):
         """Generate next question."""
-        return NodeOutputs(response={"question": "..."})
+        return NodeOutputs(
+            response={
+                "response_type": "question",
+                "response_data": {"question": "..."},
+            }
+        )
 ```
 
 ### State Accessor

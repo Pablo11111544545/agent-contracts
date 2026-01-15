@@ -124,7 +124,7 @@ class StreamingRuntime:
         self.nodes = nodes or []
         self.hooks = hooks or DefaultHooks()
         self.session_store = session_store
-        self.slices_to_restore = slices_to_restore or ["_internal", "interview", "shopping"]
+        self.slices_to_restore = slices_to_restore or ["_internal"]
     
     def add_node(self, name: str, func: Callable, description: str | None = None) -> "StreamingRuntime":
         """Add a node to the execution pipeline (fluent API).

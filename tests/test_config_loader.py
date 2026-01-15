@@ -27,13 +27,13 @@ supervisor:
 
 response_types:
   terminal_states:
-    - interview
+    - completed
     - error
 
-interview:
-  shopping_interviewer:
+features:
+  order_processor:
     max_turns: 5
-    max_questions: 3
+    max_items: 3
 """
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as f:
             f.write(yaml_content)
@@ -42,9 +42,9 @@ interview:
             config = load_config(f.name)
             
             assert config.supervisor.max_iterations == 15
-            assert "interview" in config.supervisor.terminal_response_types
-            assert "shopping_interviewer" in config.interview
-            assert config.interview["shopping_interviewer"].max_turns == 5
+            assert "completed" in config.supervisor.terminal_response_types
+            assert "order_processor" in config.features
+            assert config.features["order_processor"].max_turns == 5
             
             Path(f.name).unlink()
 

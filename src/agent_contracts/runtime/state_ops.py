@@ -56,19 +56,19 @@ def merge_session(
     Args:
         state: Current state
         session_data: Session data to merge
-        slices: Slice names to merge (default: ["_internal", "interview", "shopping"])
+        slices: Slice names to merge (default: ["_internal"])
         
     Returns:
         New state with session data merged
         
     Example:
-        >>> state = {"interview": {"count": 1}}
-        >>> session = {"interview": {"history": ["q1"]}}
-        >>> merged = merge_session(state, session, ["interview"])
-        >>> merged["interview"]  # {"count": 1, "history": ["q1"]}
+        >>> state = {"workflow": {"count": 1}}
+        >>> session = {"workflow": {"history": ["step1"]}}
+        >>> merged = merge_session(state, session, ["workflow"])
+        >>> merged["workflow"]  # {"count": 1, "history": ["step1"]}
     """
     if slices is None:
-        slices = ["_internal", "interview", "shopping"]
+        slices = ["_internal"]
     
     result = dict(state)
     for slice_name in slices:
@@ -200,9 +200,9 @@ def update_slice(state: dict, slice_name: str, **updates: Any) -> dict:
         New state with slice updated
         
     Example:
-        >>> state = update_slice(state, "interview",
-        ...     question_count=5,
-        ...     last_question={"text": "..."},
+        >>> state = update_slice(state, "workflow",
+        ...     step_count=5,
+        ...     current_step={"name": "..."},
         ... )
     """
     current_slice = state.get(slice_name, {})
@@ -224,9 +224,9 @@ def get_nested(state: dict, *keys: str, default: Any = None) -> Any:
         Value at path, or default
         
     Example:
-        >>> state = {"interview": {"collected_info": {"name": "Alice"}}}
-        >>> get_nested(state, "interview", "collected_info", "name")  # "Alice"
-        >>> get_nested(state, "interview", "missing", default="unknown")  # "unknown"
+        >>> state = {"workflow": {"collected_info": {"name": "Alice"}}}
+        >>> get_nested(state, "workflow", "collected_info", "name")  # "Alice"
+        >>> get_nested(state, "workflow", "missing", default="unknown")  # "unknown"
     """
     current = state
     for key in keys:

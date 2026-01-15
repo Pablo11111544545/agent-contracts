@@ -23,11 +23,11 @@ registry.add_valid_slice("your_slice_name")
 **予防策**:
 ```python
 # スライス名を定数として定義
-SLICE_SHOPPING = "shopping"
-SLICE_INTERVIEW = "interview"
+SLICE_ORDERS = "orders"
+SLICE_WORKFLOW = "workflow"
 
 # コントラクトで定数を使用
-reads=[SLICE_SHOPPING]
+reads=[SLICE_ORDERS]
 ```
 
 ---
@@ -87,33 +87,33 @@ validator = ContractValidator(
 
 **考えられる原因と解決策**:
 
-1. **TriggerConditionがマッチしない**
-   ```python
-   # 確認: 'when'条件は正しい？
-   when={"request.action": "serch"}  # タイポ！ "search" が正しい
-   ```
+1.  **TriggerConditionがマッチしない**
+    ```python
+    # 確認: 'when'条件は正しい？
+    when={"request.action": "serch"}  # タイポ！ "search" が正しい
+    ```
 
-2. **優先度が低すぎる**
-   ```python
-   # 優先度が高い別のノードが先にマッチしている
-   # decide_with_trace()でデバッグ
-   decision = await supervisor.decide_with_trace(state)
-   print(decision.reason.matched_rules)
-   ```
+2.  **優先度が低すぎる**
+    ```python
+    # 優先度が高い別のノードが先にマッチしている
+    # decide_with_trace()でデバッグ
+    decision = await supervisor.decide_with_trace(state)
+    print(decision.reason.matched_rules)
+    ```
 
-3. **スーパーバイザーに属していない**
-   ```python
-   # 確認: 正しいスーパーバイザーに登録されている？
-   supervisor="main"  # build_graph_from_registryのsupervisors=と一致が必要
-   ```
+3.  **スーパーバイザーに属していない**
+    ```python
+    # 確認: 正しいスーパーバイザーに登録されている？
+    supervisor="main"  # build_graph_from_registryのsupervisors=と一致が必要
+    ```
 
-4. **到達不能（トリガー条件がない）**
-   ```python
-   # トリガー条件を追加
-   trigger_conditions=[
-       TriggerCondition(priority=10, when={"request.action": "my_action"})
-   ]
-   ```
+4.  **到達不能（トリガー条件がない）**
+    ```python
+    # トリガー条件を追加
+    trigger_conditions=[
+        TriggerCondition(priority=10, when={"request.action": "my_action"})
+    ]
+    ```
 
 ---
 
@@ -131,9 +131,9 @@ for rule in decision.reason.matched_rules:
 ```
 
 **一般的な修正方法**:
-- 優先度の値を調整
-- `when`条件をより具体的に
-- `when_not`を追加して不要なマッチを除外
+-   優先度の値を調整
+-   `when`条件をより具体的に
+-   `when_not`を追加して不要なマッチを除外
 
 ---
 
@@ -141,25 +141,25 @@ for rule in decision.reason.matched_rules:
 
 **解決策**:
 
-1. **llm_hintsを改善**
-   ```python
-   # 悪い例
-   llm_hint="検索"
-   
-   # 良い例
-   llm_hint="ユーザーが明示的に商品を検索したい時に使用。閲覧やレコメンドには使用しない。"
-   ```
+1.  **llm_hintsを改善**
+    ```python
+    # 悪い例
+    llm_hint="検索"
 
-2. **明確なアクションにはルールベースを使用**
-   ```python
-   # アクションが明示的ならLLMの代わりにルールを使用
-   when={"request.action": "search"}  # 明確な意図
-   ```
+    # 良い例
+    llm_hint="ユーザーが明示的に商品を検索したい時に使用。閲覧やレコメンドには使用しない。"
+    ```
 
-3. **クリティカルパスの優先度を上げる**
-   ```python
-   priority=100  # LLMが決定する前に強制選択
-   ```
+2.  **明確なアクションにはルールベースを使用**
+    ```python
+    # アクションが明示的ならLLMの代わりにルールを使用
+    when={"request.action": "search"}  # 明確な意図
+    ```
+
+3.  **クリティカルパスの優先度を上げる**
+    ```python
+    priority=100  # LLMが決定する前に強制選択
+    ```
 
 ---
 
@@ -171,28 +171,40 @@ for rule in decision.reason.matched_rules:
 
 **解決策**:
 
-1. **終了状態を確認**
-   ```python
-   # レスポンスタイプがterminal_statesに含まれているか確認
-   terminal_response_types={"interview", "results", "error"}
-   
-   # ノードが一致するタイプを出力しているか
-   return NodeOutputs(response={"response_type": "results", ...})
-   ```
+1.  **終了状態を確認**
+    ```python
+    # response typeがterminal_statesに含まれていることを確認
+    terminal_response_types={"question", "results", "error"}
 
-2. **適切なノードにis_terminalを設定**
-   ```python
-   CONTRACT = NodeContract(
-       is_terminal=True,  # このノードの後にENDを強制
-   )
-   ```
+    # ノードの出力が一致するタイプであること
+    return NodeOutputs(
+        response={
+            "response_type": "results",
+            "response_data": {"items": [1, 2, 3]},
+        }
+    )
+    ```
 
-3. **デバッグ中はmax_iterationsを増やす**
-   ```python
-   supervisor = GenericSupervisor(
-       max_iterations=50,  # 問題を見つけるために増加
-   )
-   ```
+2.  **適切なノードにis_terminalを設定**
+    ```python
+    class ResultNode(ModularNode):
+        CONTRACT = NodeContract(
+            name="result",
+            description="最終結果を返してフローを終了",
+            reads=["request"],
+            writes=["response"],
+            supervisor="main",
+            trigger_conditions=[TriggerCondition(priority=10)],
+            is_terminal=True,  # このノードの後にENDを強制
+        )
+    ```
+
+3.  **デバッグ中はmax_iterationsを増やす**
+    ```python
+    supervisor = GenericSupervisor(
+        max_iterations=50,  # 問題を見つけるために増加
+    )
+    ```
 
 ---
 
@@ -202,13 +214,13 @@ for rule in decision.reason.matched_rules:
 
 **解決策**:
 ```python
-# コントラクトが宣言している
-writes=["shopping"]
+# コントラクトで宣言
+writes=["orders"]
 
-# executeは一致するスライスを返す必要がある
+# executeで一致するスライスを返す
 return NodeOutputs(
-    shopping={"cart": [...]},  # ✅ 正しい
-    # 間違い: response={"cart": [...]}  # ❌ 間違ったスライス
+    orders={"cart": [...]},  # ✅ 正しい
+    # Not: response={"cart": [...]}  # ❌ 間違ったスライス
 )
 ```
 
@@ -222,7 +234,11 @@ return NodeOutputs(
 ```python
 # 'context'スライスからデータが必要な場合
 CONTRACT = NodeContract(
+    name="my_node",
+    description="contextスライスが必要な例",
     reads=["request", "context"],  # 'context'を含める
+    writes=["response"],
+    supervisor="main",
 )
 
 async def execute(self, inputs, config=None):
@@ -269,7 +285,7 @@ response_types:
 # agent_config.yaml内
 response_types:
   terminal_states:
-    - interview    # response_typeと完全一致が必要
+    - question    # response_typeと完全一致が必要
     - results
     - error
 ```
@@ -279,8 +295,8 @@ response_types:
 # 完全一致が必要
 return NodeOutputs(
     response={
-        "response_type": "interview",  # 完全一致
-        # "Interview" や "INTERVIEW" ではない
+        "response_type": "question",  # 完全一致
+        # "Question" や "QUESTION" ではない
     }
 )
 ```

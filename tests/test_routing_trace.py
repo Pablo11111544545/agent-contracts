@@ -243,20 +243,71 @@ class TestDecideWithTrace:
         assert decision.reason.decision_type == "terminal_state"
     
     @pytest.mark.asyncio
-    async def test_explicit_routing(self, supervisor):
-        """Answer action should route to question owner."""
+    async def test_explicit_routing(self):
+        """Explicit routing handler routes correctly when returning valid node."""
+        # Create custom handler for testing - returns a valid registered node
+        def test_router(state: dict) -> str | None:
+            req = state.get("request", {})
+            if req.get("action") == "answer":
+                interview = state.get("interview", {})
+                last_q = interview.get("last_question", {})
+                if isinstance(last_q, dict):
+                    return last_q.get("node_id")
+            return None
+        
+        registry = NodeRegistry()
+        registry.register(HighPriorityNode)
+        registry.register(LowPriorityNode)
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=registry,
+            explicit_routing_handler=test_router,
+        )
+        
+        # Use a valid registered node name
         state = {
             "request": {"action": "answer"},
             "interview": {
-                "last_question": {"node_id": "some_interviewer"}
+                "last_question": {"node_id": "high_priority"}  # Valid node
             },
             "_internal": {},
         }
         
         decision = await supervisor.decide_with_trace(state)
         
-        assert decision.selected_node == "some_interviewer"
+        assert decision.selected_node == "high_priority"
         assert decision.reason.decision_type == "explicit_routing"
+    
+    @pytest.mark.asyncio
+    async def test_explicit_routing_invalid_node_fallback(self):
+        """Explicit routing falls back to normal routing when returning invalid node."""
+        # Create custom handler that returns an invalid node name
+        def test_router(state: dict) -> str | None:
+            return "non_existent_node"  # Invalid node name
+        
+        registry = NodeRegistry()
+        registry.register(HighPriorityNode)
+        registry.register(LowPriorityNode)
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="main",
+            llm=None,
+            registry=registry,
+            explicit_routing_handler=test_router,
+        )
+        
+        state = {
+            "request": {"action": "urgent"},  # Matches high_priority
+            "_internal": {},
+        }
+        
+        decision = await supervisor.decide_with_trace(state)
+        
+        # Should fall back to normal rule-based routing
+        assert decision.selected_node == "high_priority"
+        assert decision.reason.decision_type == "rule_match"
     
     @pytest.mark.asyncio
     async def test_matched_rules_contain_condition_description(self, supervisor):

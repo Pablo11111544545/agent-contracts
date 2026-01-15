@@ -13,20 +13,29 @@
 ```python
 class ContextEnricherNode(ModularNode):
     CONTRACT = NodeContract(
+        name="context_enricher",
+        description="requestとuser_profileからcontextを生成",
         reads=["request", "user_profile"],   # 入力を組み合わせて
         writes=["context"],                   # 充実したコンテキストを生成
+        supervisor="main",
     )
 
 class SearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="search",
+        description="requestとcontextを使って検索する",
         reads=["request", "context"],        # コンテキストを活用して
         writes=["search_results"],           # 検索結果を生成
+        supervisor="main",
     )
 
 class ResponseBuilderNode(ModularNode):
     CONTRACT = NodeContract(
+        name="response_builder",
+        description="search_resultsとcontextから最終レスポンスを構築",
         reads=["search_results", "context"], # 結果とコンテキストから
         writes=["response"],                 # 最終レスポンスを構築
+        supervisor="main",
     )
 ```
 
@@ -43,29 +52,29 @@ user_profile ──────────────────────�
 ### ✅ 意味のある名前を使用
 
 ```python
-# 良い例: 目的が明確
-"interview"      # インタビューの進行状態
+# Good: 明確な目的
+"workflow"       # ワークフローの進行状態
 "search_results" # 検索結果
 "user_profile"   # ユーザー情報
 
-# 避ける: 曖昧な名前
+# Avoid: 曖昧な名前
 "data"           # 何のデータ？
 "temp"           # 何が一時的？
 ```
 
-### ⚠️ 巨大スライスを避ける
+### ⚠️ 巨大なスライスを避ける
 
 ```python
-# 避ける: 1つのスライスにすべてを詰め込む
+# Avoid: すべてを1つのスライスに
 "state": {
     "user": {...},
-    "shopping": {...},
+    "orders": {...},
     "analytics": {...},
 }
 
-# 良い: ドメインごとに分離
+# Better: ドメイン別に分割
 "user_profile": {...}
-"shopping": {...}
+"orders": {...}
 "analytics": {...}
 ```
 
@@ -104,10 +113,10 @@ state["_internal"]["turn_count"] = 5  # これはやらない！
 from agent_contracts import increment_turn, reset_response
 from agent_contracts.runtime import update_slice, merge_session
 
-# 良い: 意図が明確
+# Good: 明確な意図
 state = increment_turn(state)
 state = reset_response(state)
-state = update_slice(state, "interview", question_count=5)
+state = update_slice(state, "workflow", question_count=5)
 
 # 避ける: 手動操作
 state["_internal"]["turn_count"] += 1
@@ -145,7 +154,7 @@ class MyHooks(RuntimeHooks):
     
     async def after_execution(self, state, result):
         # レスポンスタイプに基づいてセッションを永続化
-        if result.response_type in ("interview", "proposals"):
+        if result.response_type in ("question", "results"):
             await self.session_store.save(...)
 ```
 
@@ -235,6 +244,11 @@ v0.4.0以降は、どの条件がマッチしたかを正確に追跡できる�
 # オプション1: 明確な順序付けのために優先度を分ける
 class SearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="search",
+        description="複数条件を持つ検索ハンドラ",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=51,  # 画像検索を優先
@@ -250,6 +264,11 @@ class SearchNode(ModularNode):
 # オプション2: 複数ノードが同じ優先度で競合する場合（v0.4.0+）
 class ImageSearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="image_search",
+        description="画像ベースの検索ハンドラ",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # 同じ優先度、LLMに判断を任せる
@@ -261,6 +280,11 @@ class ImageSearchNode(ModularNode):
 
 class TextSearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="text_search",
+        description="テキストベースの検索ハンドラ",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # 同じ優先度
@@ -289,6 +313,11 @@ v0.3.x以前では、同じ優先度の複数条件を使用すると、条件�
 ```python
 class SearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="search",
+        description="優先度設計を明示した検索ハンドラ",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # 主要ハンドラ、エラーハンドラ(100)より下
@@ -490,10 +519,14 @@ validator = ContractValidator(
 class ErrorHandlerNode(ModularNode):
     CONTRACT = NodeContract(
         name="error_handler",
+        description="エラー状態を処理してエラーレスポンスを返す",
+        reads=["_internal"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=100,  # 最高優先度
-                when={"_internal.has_error": True},
+                when={"_internal.error": True},
             )
         ],
         is_terminal=True,  # 処理後にフローを終了
@@ -506,6 +539,10 @@ class ErrorHandlerNode(ModularNode):
 class FallbackNode(ModularNode):
     CONTRACT = NodeContract(
         name="fallback",
+        description="未処理リクエスト用のフォールバックハンドラ",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=1,  # 最低優先度
@@ -516,27 +553,37 @@ class FallbackNode(ModularNode):
     )
 ```
 
-### パターン: 多段階インタビュー
+### パターン: マルチステージワークフロー
 
 ```python
-# ステージ1: 基本情報
+# Stage 1: 基本情報
 class BasicInfoNode(InteractiveNode):
     CONTRACT = NodeContract(
+        name="basic_info",
+        description="ワークフローの基本情報を収集",
+        reads=["request", "workflow"],
+        writes=["response", "workflow"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,
-                when={"interview.stage": "basic"},
+                when={"workflow.stage": "basic"},
             )
         ],
     )
 
-# ステージ2: 詳細
+# Stage 2: 詳細情報
 class DetailsNode(InteractiveNode):
     CONTRACT = NodeContract(
+        name="details",
+        description="ワークフローの詳細情報を収集",
+        reads=["request", "workflow"],
+        writes=["response", "workflow"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,
-                when={"interview.stage": "details"},
+                when={"workflow.stage": "details"},
             )
         ],
     )

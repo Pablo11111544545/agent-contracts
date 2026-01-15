@@ -61,7 +61,7 @@ class AgentRuntime:
         self.graph = graph
         self.hooks = hooks or DefaultHooks()
         self.session_store = session_store
-        self.slices_to_restore = slices_to_restore or ["_internal", "interview", "shopping"]
+        self.slices_to_restore = slices_to_restore or ["_internal"]
     
     async def execute(self, request: RequestContext) -> ExecutionResult:
         """Execute the agent graph.
@@ -128,6 +128,10 @@ class AgentRuntime:
         # Initialize internal slice
         state = Internal.turn_count.set(state, 0)
         state = Internal.is_first_turn.set(state, True)
+        state = Internal.active_mode.set(state, None)
+        state = Internal.next_node.set(state, None)
+        state = Internal.decision.set(state, None)
+        state = Internal.error.set(state, None)
         
         return state
     

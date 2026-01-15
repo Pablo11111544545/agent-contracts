@@ -111,16 +111,12 @@ class TestTriggerPriority:
         # Evaluate triggers
         matches = registry.evaluate_triggers("test_supervisor", state)
         
-        # Should match with first matching condition (priority 10)
-        # because we break on first match
+        # Should select the highest priority matching condition (priority 100)
+        # even though it's listed second in the trigger_conditions list
         assert len(matches) == 1
         assert matches[0].node_name == "priority_node"
-        assert matches[0].priority == 10
-        assert matches[0].condition_index == 0
-        
-        # Verify the priority used is 100 (not 10)
-        # We can check this by looking at internal state or by testing ordering
-        # with another node
+        assert matches[0].priority == 100  # Highest priority
+        assert matches[0].condition_index == 1  # Second condition (index 1)
 
     def test_multiple_nodes_sorted_by_priority(self):
         """Test that multiple matching nodes are sorted by their highest priority."""

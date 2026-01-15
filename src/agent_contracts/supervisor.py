@@ -40,7 +40,7 @@ class ContextBuilderResult(TypedDict, total=False):
 
 
 class ContextBuilder(Protocol):
-    """Supervisor用のコンテキスト構築プロトコル。
+    """Protocol for building context for LLM routing decisions.
     
     Allows customization of which state slices and additional context
     are passed to LLM for routing decisions.
@@ -56,7 +56,7 @@ class ContextBuilder(Protocol):
             }
         
         supervisor = GenericSupervisor(
-            supervisor_name="shopping",
+            supervisor_name="workflow",
             llm=llm,
             context_builder=my_context_builder,
         )
@@ -82,6 +82,42 @@ class ContextBuilder(Protocol):
         ...
 
 
+class ExplicitRoutingHandler(Protocol):
+    """Protocol for explicit routing (e.g., return-to-sender patterns).
+    
+    Allows applications to implement domain-specific routing logic that
+    bypasses normal trigger evaluation.
+    
+    Example:
+        def interview_router(state: dict) -> str | None:
+            '''Route answers back to the node that asked the question.'''
+            req = state.get("request", {})
+            if req.get("action") == "answer":
+                interview = state.get("interview", {})
+                last_q = interview.get("last_question", {})
+                if isinstance(last_q, dict):
+                    return last_q.get("node_id")
+            return None
+        
+        supervisor = GenericSupervisor(
+            supervisor_name="workflow",
+            llm=llm,
+            explicit_routing_handler=interview_router,
+        )
+    """
+    
+    def __call__(self, state: dict) -> str | None:
+        """Determine explicit routing target.
+        
+        Args:
+            state: Current agent state
+            
+        Returns:
+            Node name to route to, or None to continue with normal routing.
+        """  
+        ...
+
+
 class GenericSupervisor:
     """Generic Supervisor.
     
@@ -89,7 +125,7 @@ class GenericSupervisor:
     evaluates conditions from NodeRegistry.
     
     Example:
-        supervisor = GenericSupervisor("shopping", llm=llm)
+        supervisor = GenericSupervisor("orders", llm=llm)
         decision = await supervisor.decide(state)
     """
     
@@ -102,6 +138,7 @@ class GenericSupervisor:
         terminal_response_types: set[str] | None = None,
         context_builder: ContextBuilder | None = None,
         max_field_length: int | None = None,
+        explicit_routing_handler: ExplicitRoutingHandler | None = None,
     ):
         """Initialize.
         
@@ -115,7 +152,11 @@ class GenericSupervisor:
                 If provided, allows customization of which state slices and
                 additional context are passed to LLM for routing decisions.
                 If omitted, uses default behavior (request, response, _internal only).
-            max_field_length: Maximum field length for sanitization (default: 1000)
+            max_field_length: Maximum field length for sanitization (default: 10000)
+            explicit_routing_handler: Custom handler for explicit routing (optional).
+                If provided, called before trigger evaluation. If handler returns
+                a node name, that node is selected immediately. Useful for
+                return-to-sender patterns (e.g., routing answers to question askers).
         """
         self.name = supervisor_name
         self.llm = llm
@@ -123,6 +164,7 @@ class GenericSupervisor:
         self.logger = logger
         self.context_builder = context_builder
         self.max_field_length = max_field_length or 10000
+        self.explicit_routing_handler = explicit_routing_handler
         
         # Load from config or use defaults
         config = get_config()
@@ -268,8 +310,8 @@ class GenericSupervisor:
         """Format rule candidates with match reasons for LLM context.
         
         Example output:
-            - appearance_analyst (P95): matched because request.user_image=True
-            - interview_strategy (P90): matched because request.request_action=create_card
+            - data_processor (P95): matched because request.has_data=True
+            - workflow_handler (P90): matched because request.action=process
         """
         if not candidates:
             return "(none)"
@@ -477,25 +519,25 @@ Last active node suggested: {child_decision or 'None'}
                 reason=RoutingReason(decision_type="terminal_state")
             )
         
-        # Phase 0.5: Explicit Routing (Return to Sender)
-        req = state.get("request", {})
-        action = req.get("action") if isinstance(req, dict) else None
-        
-        if action == "answer":
-            interview = state.get("interview", {})
-            lq = interview.get("last_question") if isinstance(interview, dict) else None
-            node_id = None
-            if lq:
-                if isinstance(lq, dict):
-                    node_id = lq.get("node_id")
+        # Phase 0.5: Explicit Routing (via pluggable handler)
+        if self.explicit_routing_handler:
+            explicit_target = self.explicit_routing_handler(state)
+            if explicit_target:
+                # Validate that the explicit target is a valid node
+                valid_nodes = set(self.registry.get_supervisor_nodes(self.name))
+                valid_nodes.add("done")
+                
+                if explicit_target not in valid_nodes:
+                    self.logger.warning(
+                        f"explicit_routing_handler returned invalid node: '{explicit_target}', "
+                        f"valid nodes: {valid_nodes}. Falling back to normal routing."
+                    )
+                    # Fall through to normal routing instead of using invalid node
                 else:
-                    node_id = getattr(lq, "node_id", None)
-            
-            if node_id:
-                return RoutingDecision(
-                    selected_node=node_id,
-                    reason=RoutingReason(decision_type="explicit_routing")
-                )
+                    return RoutingDecision(
+                        selected_node=explicit_target,
+                        reason=RoutingReason(decision_type="explicit_routing")
+                    )
 
         # Phase 1: Rule-based evaluation
         matches = self.registry.evaluate_triggers(self.name, state)

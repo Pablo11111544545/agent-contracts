@@ -4,7 +4,7 @@ Pydantic-based configuration models for the framework.
 """
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
 
@@ -14,10 +14,22 @@ class SupervisorConfig(BaseModel):
     terminal_response_types: List[str] = Field(default_factory=list)
 
 
-class InterviewConfig(BaseModel):
-    """Interview configuration."""
-    max_turns: int = 10
-    max_questions: int = 5
+class FeatureConfig(BaseModel):
+    """Generic feature configuration.
+    
+    Allows applications to define custom configuration for their features.
+    The framework does not prescribe specific fields - applications can
+    extend this or use any fields supported by their features.
+    
+    Example:
+        class MyFeatureConfig(FeatureConfig):
+            max_retries: int = 3
+            timeout_seconds: float = 30.0
+    """
+    # Generic fields that can be overridden
+    max_turns: int = Field(default=10, description="Maximum turns/iterations")
+    max_items: int = Field(default=5, description="Maximum items to process")
+    extra: Dict[str, Any] = Field(default_factory=dict, description="Custom configuration")
 
 
 class FrameworkConfig(BaseModel):
@@ -32,4 +44,4 @@ class FrameworkConfig(BaseModel):
         set_config(config)
     """
     supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
-    interview: Dict[str, InterviewConfig] = Field(default_factory=dict)
+    features: Dict[str, FeatureConfig] = Field(default_factory=dict)

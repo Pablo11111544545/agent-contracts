@@ -209,26 +209,34 @@ class ContractVisualizer:
     def _get_node_icon(self, contract: "NodeContract | None") -> str:
         """Get emoji icon for node based on its properties.
         
-        Combines icons: [LLM?] + [Terminal/Domain Type]
+        Priority: 
+        1. Custom icon from contract
+        2. Terminal node icon
+        3. LLM indicator + base icon
+        4. Default icon based on common node name patterns
         """
         if not contract:
             return "📦"
         
-        # 1. Determine base icon (Type/Domain)
-        if contract.is_terminal:
+        # 1. Use custom icon if provided
+        if contract.icon:
+            base_icon = contract.icon
+        # 2. Terminal nodes
+        elif contract.is_terminal:
             base_icon = "🔚"
+        # 3. Common patterns (generic)
         elif "search" in contract.name.lower():
             base_icon = "🔍"
-        elif "interview" in contract.name.lower():
-            base_icon = "💬"
-        elif "like" in contract.name.lower() or "heart" in contract.name.lower():
-            base_icon = "❤️"
-        elif "card" in contract.name.lower():
-            base_icon = "🃏"
+        elif "process" in contract.name.lower():
+            base_icon = "⚙️"
+        elif "validate" in contract.name.lower():
+            base_icon = "✅"
+        elif "notify" in contract.name.lower():
+            base_icon = "📢"
         else:
             base_icon = "📦"
             
-        # 2. Add LLM indicator if applicable
+        # Add LLM indicator if applicable
         if contract.requires_llm:
             return f"🤖{base_icon}"
             

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from agent_contracts.config.schema import FrameworkConfig, SupervisorConfig, InterviewConfig
+from agent_contracts.config.schema import FrameworkConfig, SupervisorConfig, FeatureConfig
 from agent_contracts.config.questions import QuestionDefinition, QuestionsConfig
 
 
@@ -39,18 +39,21 @@ def load_config(path: Path | str) -> FrameworkConfig:
         terminal_response_types=response_types.get("terminal_states", []),
     )
     
-    # Parse interview configs
-    interview_data = data.get("interview", {}) if isinstance(data, dict) else {}
-    interview: dict[str, InterviewConfig] = {}
-    for name, config in interview_data.items():
-        interview[name] = InterviewConfig(
-            max_turns=config.get("max_turns", 10),
-            max_questions=config.get("max_questions", 5),
-        )
+    # Parse feature configs
+    features_data = data.get("features", {}) if isinstance(data, dict) else {}
+    
+    features: dict[str, FeatureConfig] = {}
+    for name, config in features_data.items():
+        if isinstance(config, dict):
+            features[name] = FeatureConfig(
+                max_turns=config.get("max_turns", 10),
+                max_items=config.get("max_items", 5),
+                extra=config.get("extra", {}),
+            )
     
     return FrameworkConfig(
         supervisor=supervisor,
-        interview=interview,
+        features=features,
     )
 
 

@@ -111,8 +111,8 @@ state = {
 カスタムスライスを定義可能：
 
 ```python
-registry.add_valid_slice("shopping")
-registry.add_valid_slice("interview")
+registry.add_valid_slice("orders")
+registry.add_valid_slice("workflow")
 ```
 
 ---
@@ -224,15 +224,24 @@ supervisor = GenericSupervisor(
 会話型エージェントには`InteractiveNode`を使用：
 
 ```python
-from agent_contracts import InteractiveNode
+from agent_contracts import InteractiveNode, NodeContract, NodeOutputs, TriggerCondition
 
 
-class InterviewNode(InteractiveNode):
-    CONTRACT = NodeContract(...)
+class QuestionerNode(InteractiveNode):
+    CONTRACT = NodeContract(
+        name="questioner",
+        description="質問を行い、回答を処理する",
+        reads=["request", "workflow"],
+        writes=["response", "workflow", "_internal"],
+        supervisor="main",
+        trigger_conditions=[
+            TriggerCondition(priority=10, llm_hint="次の質問を行うときに使用"),
+        ],
+    )
     
     def prepare_context(self, inputs):
-        """入力からコンテキストを抽出"""
-        return inputs.get_slice("interview")
+        """Extract context from inputs."""
+        return inputs.get_slice("workflow")
     
     def check_completion(self, context, inputs):
         """インタビュー完了をチェック"""
@@ -247,7 +256,12 @@ class InterviewNode(InteractiveNode):
     async def generate_question(self, context, inputs, config=None):
         """次の質問を生成"""
         # LLMで質問を生成...
-        return NodeOutputs(response={"question": "どの色が好きですか？"})
+        return NodeOutputs(
+            response={
+                "response_type": "question",
+                "response_data": {"question": "どの色が好きですか？"},
+            }
+        )
 ```
 
 ### ライフサイクル
@@ -396,7 +410,7 @@ def my_context_builder(state: dict, candidates: list[str]) -> dict:
     }
 
 supervisor = GenericSupervisor(
-    supervisor_name="shopping",
+    supervisor_name="orders",
     llm=llm,
     context_builder=my_context_builder,
 )
@@ -420,7 +434,7 @@ def context_builder(state, candidates):
         "slices": {"request", "response", "conversation"},
         "summary": {
             "turn_count": 5,
-            "topics": ["shopping", "preferences"]
+            "topics": ["orders", "preferences"]
         }
     }
 ```
@@ -448,7 +462,7 @@ def supervisor_factory(name: str, llm):
 graph = build_graph_from_registry(
     llm_provider=get_llm,
     supervisor_factory=supervisor_factory,  # カスタムスーパーバイザーを注入
-    supervisors=["card", "shopping"],
+    supervisors=["orders", "notifications"],
 )
 ```
 

@@ -2,7 +2,7 @@
 
 from agent_contracts.config.schema import (
     SupervisorConfig,
-    InterviewConfig,
+    FeatureConfig,
     FrameworkConfig,
 )
 from agent_contracts.config.loader import (
@@ -22,7 +22,7 @@ from agent_contracts.config.questions import (
 __all__ = [
     # Schema
     "SupervisorConfig",
-    "InterviewConfig",
+    "FeatureConfig",
     "FrameworkConfig",
     # Loader
     "load_config",

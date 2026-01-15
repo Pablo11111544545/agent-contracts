@@ -33,11 +33,11 @@ class NodeRegistry:
     
     Example:
         registry = NodeRegistry()
-        registry.register(LikeHandlerNode)
-        registry.register(UnlikeHandlerNode)
+        registry.register(OrderProcessorNode)
+        registry.register(InventoryUpdaterNode)
         
         # Supervisor routing
-        candidates = registry.evaluate_triggers("shopping", state)
+        candidates = registry.evaluate_triggers("orders", state)
     """
     
     def __init__(self, valid_slices: set[str] | None = None):
@@ -117,6 +117,9 @@ class NodeRegistry:
     ) -> list[TriggerMatch]:
         """Evaluate all node trigger conditions and return matches.
         
+        For each node, evaluates all trigger conditions and selects the one
+        with the highest priority among matching conditions.
+        
         Args:
             supervisor: Supervisor name to evaluate
             state: Current State
@@ -129,15 +132,19 @@ class NodeRegistry:
         for name in self.get_supervisor_nodes(supervisor):
             contract = self._contracts[name]
             
-            # Find first matching condition for this node
+            # Find highest priority matching condition for this node
+            best_match: TriggerMatch | None = None
             for idx, condition in enumerate(contract.trigger_conditions):
                 if self._evaluate_condition(condition, state):
-                    matches.append(TriggerMatch(
-                        priority=condition.priority,
-                        node_name=name,
-                        condition_index=idx,
-                    ))
-                    break  # First matching condition only
+                    if best_match is None or condition.priority > best_match.priority:
+                        best_match = TriggerMatch(
+                            priority=condition.priority,
+                            node_name=name,
+                            condition_index=idx,
+                        )
+            
+            if best_match:
+                matches.append(best_match)
         
         # Sort by priority (descending)
         return sorted(matches, key=lambda x: x.priority, reverse=True)

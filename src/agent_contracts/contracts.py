@@ -53,12 +53,12 @@ class NodeContract(BaseModel):
     Registry uses this for I/O validation, routing, and dependency analysis.
     
     Example:
-        class LikeHandlerNode(ModularNode):
+        class OrderProcessorNode(ModularNode):
             CONTRACT = NodeContract(
-                name="like_handler",
-                description="Records product LIKE to card",
-                reads=["request", "card", "shopping"],
-                writes=["card", "shopping", "response"],
+                name="order_processor",
+                description="Processes incoming orders",
+                reads=["request", "orders", "inventory"],
+                writes=["orders", "inventory", "response"],
                 ...
             )
     """
@@ -83,7 +83,7 @@ class NodeContract(BaseModel):
     )
     services: list[str] = Field(
         default_factory=list,
-        description="Required service names (card_service, shopify_service, etc.)",
+        description="Required service names (e.g., database_service, api_service)",
     )
     
     # === Supervisor ===
@@ -101,6 +101,12 @@ class NodeContract(BaseModel):
     is_terminal: bool = Field(
         default=False,
         description="Whether this node should transition to END after execution",
+    )
+    
+    # === Visualization ===
+    icon: str | None = Field(
+        default=None,
+        description="Optional emoji icon for visualization (e.g., '🔍', '💬')",
     )
     
     def get_highest_priority_condition(self) -> TriggerCondition | None:

@@ -21,18 +21,18 @@ class ModularNode(ABC):
     All nodes inherit this class and define a CONTRACT class variable.
     
     Example:
-        class LikeHandlerNode(ModularNode):
+        class OrderProcessorNode(ModularNode):
             CONTRACT = NodeContract(
-                name="like_handler",
-                reads=["request", "card", "shopping"],
-                writes=["card", "shopping", "response"],
+                name="order_processor",
+                reads=["request", "orders", "inventory"],
+                writes=["orders", "inventory", "response"],
                 ...
             )
             
             async def execute(self, inputs: NodeInputs) -> NodeOutputs:
-                card = inputs.get_slice("card")
+                orders = inputs.get_slice("orders")
                 ...
-                return NodeOutputs(card={...}, response={...})
+                return NodeOutputs(orders={...}, response={...})
     """
     
     # Subclasses must define this

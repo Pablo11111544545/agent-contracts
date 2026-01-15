@@ -13,20 +13,29 @@ Nodes read from multiple slices and write to others, **transforming and enrichin
 ```python
 class ContextEnricherNode(ModularNode):
     CONTRACT = NodeContract(
+        name="context_enricher",
+        description="Enrich request with user profile context",
         reads=["request", "user_profile"],   # Combine inputs
         writes=["context"],                   # Produce enriched context
+        supervisor="main",
     )
 
 class SearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="search",
+        description="Perform search using request and context",
         reads=["request", "context"],        # Use context
         writes=["search_results"],           # Produce results
+        supervisor="main",
     )
 
 class ResponseBuilderNode(ModularNode):
     CONTRACT = NodeContract(
+        name="response_builder",
+        description="Build the final response from results",
         reads=["search_results", "context"], # From results and context
         writes=["response"],                 # Build final response
+        supervisor="main",
     )
 ```
 
@@ -44,7 +53,7 @@ user_profile ──────────────────────�
 
 ```python
 # Good: Clear purpose
-"interview"      # Interview progress state
+"workflow"       # Workflow progress state
 "search_results" # Search results
 "user_profile"   # User information
 
@@ -59,13 +68,13 @@ user_profile ──────────────────────�
 # Avoid: Everything in one slice
 "state": {
     "user": {...},
-    "shopping": {...},
+    "orders": {...},
     "analytics": {...},
 }
 
 # Better: Separate by domain
 "user_profile": {...}
-"shopping": {...}
+"orders": {...}
 "analytics": {...}
 ```
 
@@ -107,7 +116,7 @@ from agent_contracts.runtime import update_slice, merge_session
 # Good: Clear intent
 state = increment_turn(state)
 state = reset_response(state)
-state = update_slice(state, "interview", question_count=5)
+state = update_slice(state, "workflow", question_count=5)
 
 # Avoid: Manual manipulation
 state["_internal"]["turn_count"] += 1
@@ -145,7 +154,7 @@ class MyHooks(RuntimeHooks):
     
     async def after_execution(self, state, result):
         # Persist session based on response type
-        if result.response_type in ("interview", "proposals"):
+        if result.response_type in ("question", "results"):
             await self.session_store.save(...)
 ```
 
@@ -233,6 +242,11 @@ v0.4.0+ accurately tracks which condition matched, enabling flexible priority de
 # Option 1: Different priorities for clear ordering
 class SearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="search",
+        description="Search handler (single node with multiple conditions)",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=51,  # Image search has priority
@@ -248,6 +262,11 @@ class SearchNode(ModularNode):
 # Option 2: Multiple nodes competing with same priority (v0.4.0+)
 class ImageSearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="image_search",
+        description="Image-based search handler",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # Same priority, let LLM decide
@@ -259,6 +278,11 @@ class ImageSearchNode(ModularNode):
 
 class TextSearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="text_search",
+        description="Text-based search handler",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # Same priority
@@ -287,6 +311,11 @@ If using v0.3.x or earlier, avoid using the same priority for multiple condition
 ```python
 class SearchNode(ModularNode):
     CONTRACT = NodeContract(
+        name="search",
+        description="Search handler with documented priority",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # Primary handler, below error handlers (100)
@@ -488,10 +517,14 @@ validator = ContractValidator(
 class ErrorHandlerNode(ModularNode):
     CONTRACT = NodeContract(
         name="error_handler",
+        description="Handles error states and returns an error response",
+        reads=["_internal"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=100,  # Highest priority
-                when={"_internal.has_error": True},
+                when={"_internal.error": True},
             )
         ],
         is_terminal=True,  # End flow after handling
@@ -504,6 +537,10 @@ class ErrorHandlerNode(ModularNode):
 class FallbackNode(ModularNode):
     CONTRACT = NodeContract(
         name="fallback",
+        description="Catch-all fallback handler",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=1,  # Lowest priority
@@ -514,16 +551,21 @@ class FallbackNode(ModularNode):
     )
 ```
 
-### Pattern: Multi-Stage Interview
+### Pattern: Multi-Stage Workflow
 
 ```python
 # Stage 1: Basic info
 class BasicInfoNode(InteractiveNode):
     CONTRACT = NodeContract(
+        name="basic_info",
+        description="Collect basic information for the workflow",
+        reads=["request", "workflow"],
+        writes=["response", "workflow"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,
-                when={"interview.stage": "basic"},
+                when={"workflow.stage": "basic"},
             )
         ],
     )
@@ -531,10 +573,15 @@ class BasicInfoNode(InteractiveNode):
 # Stage 2: Details
 class DetailsNode(InteractiveNode):
     CONTRACT = NodeContract(
+        name="details",
+        description="Collect detailed information for the workflow",
+        reads=["request", "workflow"],
+        writes=["response", "workflow"],
+        supervisor="main",
         trigger_conditions=[
             TriggerCondition(
                 priority=50,
-                when={"interview.stage": "details"},
+                when={"workflow.stage": "details"},
             )
         ],
     )

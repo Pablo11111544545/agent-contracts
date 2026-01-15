@@ -25,8 +25,8 @@ class GraphBuilder:
     
     Example:
         builder = GraphBuilder(registry)
-        builder.add_supervisor("shopping", llm)
-        builder.add_supervisor("card", llm)
+        builder.add_supervisor("orders", llm)
+        builder.add_supervisor("notifications", llm)
         graph = builder.build()
     """
     
