@@ -247,19 +247,25 @@ class SearchNode(ModularNode):
         ],
     )
 
-# オプション2: 同じ優先度でLLMに柔軟に選ばせる（v0.4.0+）
-class RecommendationNode(ModularNode):
+# オプション2: 複数ノードが同じ優先度で競合する場合（v0.4.0+）
+class ImageSearchNode(ModularNode):
     CONTRACT = NodeContract(
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # 同じ優先度、LLMに判断を任せる
-                when={"request.action": "recommend", "context.style": "casual"},
-                llm_hint="カジュアルスタイルのレコメンドに使用",
+                when={"request.action": "search", "request.has_image": True},
+                llm_hint="画像ベースの検索に使用。ユーザーが画像をアップロードした場合に最適。",
             ),
+        ],
+    )
+
+class TextSearchNode(ModularNode):
+    CONTRACT = NodeContract(
+        trigger_conditions=[
             TriggerCondition(
                 priority=50,  # 同じ優先度
-                when={"request.action": "recommend", "context.style": "formal"},
-                llm_hint="フォーマルスタイルのレコメンドに使用",
+                when={"request.action": "search"},
+                llm_hint="テキストベースの検索に使用。商品名やキーワードでの検索に最適。",
             ),
         ],
     )
@@ -271,9 +277,9 @@ class RecommendationNode(ModularNode):
 - 複数の条件が等しく有効な場合に柔軟な設計パターンが可能
 
 **同じ優先度が有効なユースケース:**
-- 複数のスタイル/嗜好バリエーション（LLMに最適なマッチを選ばせる）
+- 複数の異なるノードが同じアクションを異なる方法で処理できる場合
+- どちらのアプローチも有効で、LLMにコンテキストベースで選ばせたい場合
 - A/Bテストシナリオ
-- 厳密な順序付けが不要なコンテキストバリエーション
 
 **v0.3.x以前をご使用の場合:**
 v0.3.x以前では、同じ優先度の複数条件を使用すると、条件説明が不正確になる可能性があります。これらのバージョンでは、明確な順序付けのために異なる優先度を使用してください。

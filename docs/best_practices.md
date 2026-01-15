@@ -245,19 +245,25 @@ class SearchNode(ModularNode):
         ],
     )
 
-# Option 2: Same priority for flexible LLM selection (v0.4.0+)
-class RecommendationNode(ModularNode):
+# Option 2: Multiple nodes competing with same priority (v0.4.0+)
+class ImageSearchNode(ModularNode):
     CONTRACT = NodeContract(
         trigger_conditions=[
             TriggerCondition(
                 priority=50,  # Same priority, let LLM decide
-                when={"request.action": "recommend", "context.style": "casual"},
-                llm_hint="Use for casual style recommendations",
+                when={"request.action": "search", "request.has_image": True},
+                llm_hint="Use for image-based search. Best when user uploads an image.",
             ),
+        ],
+    )
+
+class TextSearchNode(ModularNode):
+    CONTRACT = NodeContract(
+        trigger_conditions=[
             TriggerCondition(
                 priority=50,  # Same priority
-                when={"request.action": "recommend", "context.style": "formal"},
-                llm_hint="Use for formal style recommendations",
+                when={"request.action": "search"},
+                llm_hint="Use for text-based search. Best for product names or keywords.",
             ),
         ],
     )
@@ -269,9 +275,9 @@ class RecommendationNode(ModularNode):
 - Enables flexible design patterns where multiple conditions are equally valid
 
 **Use cases for same priority:**
-- Multiple style/preference variants (let LLM choose best match)
+- Multiple different nodes can handle the same action in different ways
+- Both approaches are valid, and you want the LLM to choose based on context
 - A/B testing scenarios
-- Contextual variations without strict ordering
 
 **Note for v0.3.x and earlier:**
 If using v0.3.x or earlier, avoid using the same priority for multiple conditions, as the condition explanation may be inaccurate. In these versions, use different priorities for clear ordering.
