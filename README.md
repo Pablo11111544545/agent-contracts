@@ -94,14 +94,13 @@ graph TD
 The Supervisor automatically builds rich LLM context by:
 - **Base slices**: Always includes `request`, `response`, `_internal`
 - **Candidate-driven**: Analyzes candidate nodes' `reads` declarations
-- **Recursive summarization**: Uses `StateSummarizer` to preserve nested structure
+- **Recursive summarization**: Preserves nested structure with controlled depth
 - **Efficient**: Provides only relevant state information with controlled depth
 - **Contract-driven**: No application-specific knowledge required
 
-The `StateSummarizer` intelligently handles complex nested data:
+The context builder intelligently handles complex nested data:
 - Preserves hierarchical structure (dicts in lists, lists in dicts)
-- Limits depth (default: 2 levels) and item counts (default: 3 dict items, 2 list items)
-- Shows total item counts for truncated collections
+- Limits depth and item counts for efficient LLM context
 - Prevents information loss from nested structures
 
 ---
