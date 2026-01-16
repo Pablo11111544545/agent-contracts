@@ -91,17 +91,10 @@ graph TD
 
 ### Smart Context Building
 
-The Supervisor automatically builds rich LLM context by:
+The Supervisor automatically builds LLM context by:
 - **Base slices**: Always includes `request`, `response`, `_internal`
-- **Candidate-driven**: Analyzes candidate nodes' `reads` declarations
-- **Recursive summarization**: Preserves nested structure with controlled depth
-- **Efficient**: Provides only relevant state information with controlled depth
-- **Contract-driven**: No application-specific knowledge required
-
-The context builder intelligently handles complex nested data:
-- Preserves hierarchical structure (dicts in lists, lists in dicts)
-- Limits depth and item counts for efficient LLM context
-- Prevents information loss from nested structures
+- **Customizable**: Supports custom `context_builder` for application-specific context
+- **Field sanitization**: Automatically sanitizes long fields and image data
 
 ---
 
