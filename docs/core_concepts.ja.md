@@ -301,6 +301,20 @@ if result.has_errors:
     exit(1)
 ```
 
+### Strictモード（CI向け）
+
+```python
+validator = ContractValidator(
+    registry,
+    known_services={"db_service", "cache_service"},
+    strict=True,  # WARNINGもERRORとして扱う
+)
+result = validator.validate()
+```
+
+**Strictモード**は、WARNING（不明なサービス、到達不能ノード、`request`への書き込み等）を
+ERRORに昇格し、CIで早期に検知できます。
+
 ### 検証レベル
 
 | レベル | 例 |

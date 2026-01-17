@@ -13,6 +13,8 @@
 
 📘 **Full Documentation**: [https://yatarousan0227.github.io/agent-contracts/](https://yatarousan0227.github.io/agent-contracts/)
 
+🧩 **公式Skills（エージェント指示ファイル）**: `docs/skills/official/index.md`
+
 **LangGraphエージェントを構築するための、モジュール式・契約駆動型ノードアーキテクチャ。**
 
 ---
@@ -200,6 +202,26 @@ class UrgentNode(ModularNode):
     )
     # ... 実装 ...
 ```
+
+---
+
+## 🧰 CLI
+
+登録済みノードから、コントラクトの検証/可視化/差分を実行できます：
+
+```bash
+agent-contracts validate --module myapp.nodes --strict
+agent-contracts visualize --module myapp.nodes --output ARCHITECTURE.md
+agent-contracts diff --from-module myapp.v1.nodes --to-module myapp.v2.nodes
+```
+
+詳細は `docs/cli.ja.md` を参照してください。
+
+## 📦 Examples
+
+- `examples/05_backend_runtime.py`: Strict検証付きのバックエンド実行例
+- `examples/03_simple_chatbot.py`: 最小構成のルールベースルーティング
+- `examples/04_multi_step_workflow.py`: 逐次ワークフロー例
 
 ---
 

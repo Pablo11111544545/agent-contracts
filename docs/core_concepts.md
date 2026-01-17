@@ -301,6 +301,20 @@ if result.has_errors:
     exit(1)
 ```
 
+### Strict Mode (CI-friendly)
+
+```python
+validator = ContractValidator(
+    registry,
+    known_services={"db_service", "cache_service"},
+    strict=True,  # Treat warnings as errors
+)
+result = validator.validate()
+```
+
+**Strict mode** turns warnings (unknown services, unreachable nodes, writing to `request`, etc.)
+into errors so you can fail fast in CI.
+
 ### Validation Levels
 
 | Level | Example |

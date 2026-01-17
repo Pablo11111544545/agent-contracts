@@ -13,6 +13,8 @@ English | [日本語](README.ja.md)
 
 📘 **Full Documentation**: [https://yatarousan0227.github.io/agent-contracts/](https://yatarousan0227.github.io/agent-contracts/)
 
+🧩 **Official Skills (agent instructions)**: `docs/skills/official/index.md`
+
 **A modular, contract-driven node architecture for building scalable LangGraph agents.**
 
 ---
@@ -200,6 +202,26 @@ class UrgentNode(ModularNode):
     )
     # ... implementation ...
 ```
+
+---
+
+## 🧰 CLI
+
+Validate, visualize, and diff contracts from your registered nodes:
+
+```bash
+agent-contracts validate --module myapp.nodes --strict
+agent-contracts visualize --module myapp.nodes --output ARCHITECTURE.md
+agent-contracts diff --from-module myapp.v1.nodes --to-module myapp.v2.nodes
+```
+
+See `docs/cli.md` for details.
+
+## 📦 Examples
+
+- `examples/05_backend_runtime.py`: backend-oriented runtime with strict validation
+- `examples/03_simple_chatbot.py`: minimal rule-based routing
+- `examples/04_multi_step_workflow.py`: sequential workflow pattern
 
 ---
 

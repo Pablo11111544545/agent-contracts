@@ -105,6 +105,17 @@ class NodeRegistry:
             name for name, contract in self._contracts.items()
             if contract.supervisor == supervisor
         ]
+
+    def export_contracts(self) -> dict[str, dict[str, Any]]:
+        """Export registered contracts as serializable dicts.
+        
+        Returns:
+            Mapping of node name -> contract dict
+        """
+        exported: dict[str, dict[str, Any]] = {}
+        for name, contract in self._contracts.items():
+            exported[name] = contract.model_dump()
+        return exported
     
     # =========================================================================
     # Routing Evaluation
