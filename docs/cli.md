@@ -2,6 +2,8 @@
 
 The CLI expects your modules or files to register nodes (typically via `get_node_registry()`).
 
+If a module defines `register_all_nodes(registry=None)` but does not register nodes at import time, the CLI calls it automatically after importing the module.
+
 ## Validate
 
 ```bash
@@ -22,6 +24,13 @@ agent-contracts visualize --file ./nodes.py --output -
 ```
 
 - `--output -` prints to stdout.
+- If your app already has a compiled LangGraph, pass it to the visualizer via `--graph-module` (recommended for app-specific entrypoints/state):
+
+```bash
+agent-contracts visualize --module myapp.nodes --graph-module myapp.graph --graph-func get_graph --output -
+```
+
+- Otherwise, when possible, the CLI compiles a best-effort LangGraph from the registry to include the `LangGraph Node Flow` section.
 
 ## Diff
 

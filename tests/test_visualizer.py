@@ -219,6 +219,27 @@ class TestContractVisualizer:
         # Check terminal node styling
         assert "terminal" in section
 
+    def test_generate_langgraph_flow_with_graph(self, registry: NodeRegistry):
+        mock_graph = MagicMock()
+        mock_graph.get_graph.return_value.draw_mermaid.return_value = "flowchart TD\n  A --> B"
+        viz = ContractVisualizer(registry, graph=mock_graph)
+
+        section = viz.generate_langgraph_flow()
+        assert "LangGraph Node Flow" in section
+        assert "```mermaid" in section
+        assert "A --> B" in section
+
+    def test_generate_langgraph_flow_with_direct_draw_mermaid(self, registry: NodeRegistry):
+        mock_graph = MagicMock()
+        del mock_graph.get_graph
+        mock_graph.draw_mermaid.return_value = "flowchart TD\n  X --> Y"
+        viz = ContractVisualizer(registry, graph=mock_graph)
+
+        section = viz.generate_langgraph_flow()
+        assert "LangGraph Node Flow" in section
+        assert "```mermaid" in section
+        assert "X --> Y" in section
+
 
 class TestPriorityIcons:
     """Tests for priority icon assignment."""

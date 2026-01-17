@@ -5,8 +5,11 @@ contracts, including Mermaid diagrams for visual representation.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import inspect
+import os
+import sys
 from collections import defaultdict
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
@@ -65,19 +68,90 @@ class ContractVisualizer:
     def generate_langgraph_flow(self) -> str:
         """Generate LangGraph flow visualization from compiled graph."""
         if not self.graph:
+            self._debug("LangGraph flow skipped: graph is None")
             return ""
-            
-        try:
-            mermaid = self.graph.get_graph().draw_mermaid()
-            return f"""## 🔗 LangGraph Node Flow
+
+        mermaid = self._try_render_langgraph_mermaid()
+        if not mermaid:
+            self._debug("LangGraph flow skipped: mermaid rendering returned empty")
+            return ""
+
+        return f"""## 🔗 LangGraph Node Flow
 
 > Auto-generated from compiled LangGraph
 
 ```mermaid
 {mermaid}
 ```"""
-        except Exception:
-            return ""
+
+    def _try_render_langgraph_mermaid(self) -> str:
+        candidates: list[object] = []
+        get_graph = getattr(self.graph, "get_graph", None)
+        if callable(get_graph):
+            try:
+                candidates.append(self._call_get_graph(get_graph))
+            except Exception as e:
+                self._debug(
+                    f"LangGraph get_graph() failed: {type(e).__name__}: {e}"
+                )
+                pass
+        candidates.append(self.graph)
+
+        for obj in candidates:
+            for method_name in ("draw_mermaid", "to_mermaid"):
+                method = getattr(obj, method_name, None)
+                if not callable(method):
+                    continue
+                try:
+                    rendered = method()
+                except Exception as e:
+                    self._debug(
+                        f"LangGraph {type(obj).__name__}.{method_name}() failed: "
+                        f"{type(e).__name__}: {e}"
+                    )
+                    continue
+
+                if isinstance(rendered, bytes):
+                    try:
+                        rendered = rendered.decode("utf-8")
+                    except Exception:
+                        rendered = rendered.decode()
+                elif not isinstance(rendered, str):
+                    self._debug(
+                        f"LangGraph {type(obj).__name__}.{method_name}() returned non-string; ignored"
+                    )
+                    continue
+
+                rendered = rendered.strip()
+                if rendered:
+                    self._debug(f"LangGraph mermaid rendered via {type(obj).__name__}.{method_name}()")
+                    return rendered
+
+        return ""
+
+    def _debug(self, message: str) -> None:
+        if os.getenv("AGENT_CONTRACTS_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}:
+            print(f"[agent-contracts][debug] {message}", file=sys.stderr)
+
+    def _call_get_graph(self, get_graph) -> object:
+        try:
+            return get_graph()
+        except TypeError as e:
+            try:
+                signature = inspect.signature(get_graph)
+            except (TypeError, ValueError):
+                raise e
+
+            required = [
+                p
+                for p in signature.parameters.values()
+                if p.default is inspect.Parameter.empty
+                and p.kind
+                in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ]
+            if len(required) == 1:
+                return get_graph({})
+            raise e
 
     
     # =========================================================================

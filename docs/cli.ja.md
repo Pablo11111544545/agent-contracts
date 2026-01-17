@@ -3,6 +3,8 @@
 CLIは、指定したモジュール/ファイルがノードを登録することを前提に動作します
 （通常は `get_node_registry()` を使用）。
 
+モジュールが `register_all_nodes(registry=None)` を定義しているものの、import 時に登録を行わない場合は、CLI が import 後に自動で呼び出します。
+
 ## Validate
 
 ```bash
@@ -23,6 +25,13 @@ agent-contracts visualize --file ./nodes.py --output -
 ```
 
 - `--output -` で標準出力に表示。
+- アプリ側で compiled LangGraph を用意している場合は `--graph-module` 経由で渡すのがおすすめです（アプリ固有の entrypoint/state を反映できます）:
+
+```bash
+agent-contracts visualize --module myapp.nodes --graph-module myapp.graph --graph-func get_graph --output -
+```
+
+- それ以外の場合、可能ならレジストリから best-effort で LangGraph をコンパイルして `LangGraph Node Flow` セクションも生成します。
 
 ## Diff
 
