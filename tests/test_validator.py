@@ -119,6 +119,21 @@ class UnreachableNode(ModularNode):
         return NodeOutputs(response={"done": True})
 
 
+class RequestWriterNode(ModularNode):
+    """A node that writes to request slice."""
+    CONTRACT = NodeContract(
+        name="request_writer",
+        description="Writes to request slice",
+        reads=["request"],
+        writes=["request"],
+        supervisor="main",
+        trigger_conditions=[TriggerCondition(priority=1)],
+    )
+    
+    async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+        return NodeOutputs(request={"mutated": True})
+
+
 # =============================================================================
 # Tests
 # =============================================================================
@@ -250,6 +265,33 @@ class TestContractValidator:
         
         # Both nodes write to 'response'
         assert any("response" in info and "valid_node" in info for info in result.info)
+
+    def test_request_write_warning(self):
+        """Writing to request slice should be warned."""
+        registry = NodeRegistry()
+        registry.register(RequestWriterNode)
+        
+        validator = ContractValidator(registry)
+        result = validator.validate()
+        
+        assert result.has_warnings
+        assert any("request" in w for w in result.warnings)
+
+    def test_strict_mode_escalates_warnings(self):
+        """Strict mode should convert warnings to errors."""
+        registry = NodeRegistry()
+        registry.register(NodeWithUnknownService)
+        
+        validator = ContractValidator(
+            registry,
+            known_services={"db_service"},
+            strict=True,
+        )
+        result = validator.validate()
+        
+        assert result.has_errors
+        assert not result.has_warnings
+        assert any("STRICT:" in e for e in result.errors)
     
     def test_get_shared_writers(self):
         """get_shared_writers should return correct mapping."""
@@ -340,4 +382,3 @@ class TestContractValidator:
         
         # request should NOT be flagged as read_only (it's an input slice)
         assert "request" not in unused
-

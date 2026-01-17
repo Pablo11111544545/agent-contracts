@@ -150,5 +150,7 @@ print("✅ Contracts validated!")
 ## Next Steps
 
 - 📚 [Core Concepts](core_concepts.md) - Understand the architecture
+- 🧰 [CLI](cli.md) - Validate, visualize, and diff contracts
 - 🎯 [Best Practices](best_practices.md) - Design patterns and tips
 - 🐛 [Troubleshooting](troubleshooting.md) - Common issues and solutions
+- 📦 Examples - See `examples/05_backend_runtime.py` for a backend runtime flow

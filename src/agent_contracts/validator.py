@@ -104,6 +104,7 @@ class ContractValidator:
         self,
         registry: "NodeRegistry",
         known_services: set[str] | None = None,
+        strict: bool = False,
     ):
         """Initialize validator.
         
@@ -111,9 +112,11 @@ class ContractValidator:
             registry: Node registry to validate
             known_services: Set of known service names for validation.
                            If None, service validation is skipped.
+            strict: Treat warnings as errors for CI enforcement.
         """
         self._registry = registry
         self._known_services = known_services
+        self._strict = strict
     
     def validate(self) -> ValidationResult:
         """Run all validations.
@@ -128,6 +131,7 @@ class ContractValidator:
         self._validate_services(result)
         self._validate_reachability(result)
         self._report_shared_writers(result)
+        self._apply_strict_mode(result)
         
         # Log summary
         if result.has_errors:
@@ -160,6 +164,10 @@ class ContractValidator:
                 if slice_name not in valid_slices:
                     result.errors.append(
                         f"Unknown slice '{slice_name}' in node '{name}' writes"
+                    )
+                if slice_name == "request":
+                    result.warnings.append(
+                        f"Writing to 'request' slice is discouraged (node '{name}')"
                     )
     
     def _validate_services(self, result: ValidationResult) -> None:
@@ -208,6 +216,13 @@ class ContractValidator:
                 result.info.append(
                     f"Shared writers for '{slice_name}': {writers_str}"
                 )
+
+    def _apply_strict_mode(self, result: ValidationResult) -> None:
+        """Convert warnings to errors in strict mode."""
+        if not self._strict or not result.warnings:
+            return
+        result.errors.extend([f"STRICT: {warning}" for warning in result.warnings])
+        result.warnings = []
     
     def get_shared_writers(self) -> dict[str, list[str]]:
         """Get all slices and their writers.

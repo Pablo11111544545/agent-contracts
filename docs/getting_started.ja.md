@@ -150,5 +150,7 @@ print("✅ コントラクト検証完了！")
 ## 次のステップ
 
 - 📚 [コアコンセプト](core_concepts.ja.md) - アーキテクチャを理解する
+- 🧰 [CLI](cli.ja.md) - コントラクトの検証・可視化・差分
 - 🎯 [ベストプラクティス](best_practices.ja.md) - 設計パターンとヒント
 - 🐛 [トラブルシューティング](troubleshooting.ja.md) - よくある問題と解決策
+- 📦 Examples - `examples/05_backend_runtime.py` のバックエンド実行例
