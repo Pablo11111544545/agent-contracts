@@ -13,6 +13,7 @@ from agent_contracts.cli import (
     _handle_validate,
     _handle_visualize,
     _import_module,
+    _try_compile_langgraph,
     build_parser,
 )
 
@@ -163,6 +164,212 @@ def test_visualize_file_output(tmp_path: Path, capsys: pytest.CaptureFixture[str
     doc = output_path.read_text(encoding="utf-8")
     assert doc.startswith("# ")
     assert "Agent Architecture" in doc
+
+
+def test_visualize_uses_graph_module_for_langgraph_flow(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    reset_registry()
+    module_path = tmp_path / "nodes_vis_with_graph.py"
+    _write_module(module_path, _node_module_content())
+
+    graph_module_path = tmp_path / "graph_provider.py"
+    graph_module_path.write_text(
+        """
+class GraphObj:
+    def draw_mermaid(self):
+        return "flowchart TD\\n  A --> B"
+
+
+class Compiled:
+    def get_graph(self):
+        return GraphObj()
+
+
+def get_graph():
+    return Compiled()
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        args = type("Args", (), {
+            "module": [],
+            "file": [str(module_path)],
+            "graph_module": "graph_provider",
+            "graph_func": "get_graph",
+            "output": "-",
+        })()
+
+        exit_code = _handle_visualize(args)
+        output = capsys.readouterr().out
+        assert exit_code == 0
+        assert "LangGraph Node Flow" in output
+        assert "A --> B" in output
+    finally:
+        sys.path = [p for p in sys.path if p != str(tmp_path)]
+        sys.modules.pop("graph_provider", None)
+
+
+def test_visualize_module_calls_register_all_nodes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    reset_registry()
+    pkg = tmp_path / "app" / "agents" / "impl"
+    pkg.mkdir(parents=True)
+    (tmp_path / "app" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "app" / "agents" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "app" / "agents" / "impl" / "__init__.py").write_text(
+        """
+from agent_contracts import (
+    ModularNode,
+    NodeContract,
+    NodeInputs,
+    NodeOutputs,
+    TriggerCondition,
+    get_node_registry,
+)
+
+
+class SampleNode(ModularNode):
+    CONTRACT = NodeContract(
+        name="sample",
+        description="sample node",
+        reads=["request"],
+        writes=["response"],
+        supervisor="main",
+        trigger_conditions=[TriggerCondition(priority=1)],
+    )
+
+    async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+        return NodeOutputs(response={"ok": True})
+
+
+def register_all_nodes(registry=None) -> None:
+    (registry or get_node_registry()).register(SampleNode)
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        args = type("Args", (), {
+            "module": ["app.agents.impl"],
+            "file": [],
+            "output": "-",
+        })()
+
+        exit_code = _handle_visualize(args)
+        output = capsys.readouterr().out
+        assert exit_code == 0
+        assert "`sample`" in output
+    finally:
+        sys.path = [p for p in sys.path if p != str(tmp_path)]
+        sys.modules.pop("app.agents.impl", None)
+
+
+def test_build_langgraph_state_schema_includes_registered_slices(tmp_path: Path):
+    from agent_contracts.cli import _build_langgraph_state_schema
+    from agent_contracts import get_node_registry
+
+    reset_registry()
+    module_path = tmp_path / "nodes_schema.py"
+    _write_module(
+        module_path,
+        _node_module_content(
+            extra="""
+registry.add_valid_slice("shopping")
+
+
+class ExtraSliceNode(ModularNode):
+    CONTRACT = NodeContract(
+        name="extra_slice",
+        description="extra",
+        reads=["shopping"],
+        writes=["shopping"],
+        supervisor="main",
+        trigger_conditions=[TriggerCondition(priority=1)],
+    )
+
+    async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+        return NodeOutputs(shopping={})
+
+
+registry.register(ExtraSliceNode)
+""".strip(),
+        ),
+    )
+
+    args = type("Args", (), {
+        "module": [],
+        "file": [str(module_path)],
+        "known_services": [],
+        "strict": False,
+    })()
+    _handle_validate(args)
+
+    schema = _build_langgraph_state_schema(get_node_registry())
+    assert "request" in schema.__annotations__
+    assert "response" in schema.__annotations__
+    assert "_internal" in schema.__annotations__
+    assert "shopping" in schema.__annotations__
+
+
+def test_try_compile_langgraph_uses_entrypoint_for_all_supervisors(monkeypatch: pytest.MonkeyPatch):
+    from agent_contracts import NodeRegistry, ModularNode, NodeContract, TriggerCondition
+
+    class NodeA(ModularNode):
+        CONTRACT = NodeContract(
+            name="a",
+            description="a",
+            reads=["request"],
+            writes=["response"],
+            supervisor="card",
+            trigger_conditions=[TriggerCondition(priority=1)],
+        )
+
+        async def execute(self, inputs, config=None):
+            raise NotImplementedError
+
+    class NodeB(ModularNode):
+        CONTRACT = NodeContract(
+            name="b",
+            description="b",
+            reads=["request"],
+            writes=["response"],
+            supervisor="shopping",
+            trigger_conditions=[TriggerCondition(priority=1)],
+        )
+
+        async def execute(self, inputs, config=None):
+            raise NotImplementedError
+
+    reg = NodeRegistry()
+    reg.register(NodeA)
+    reg.register(NodeB)
+
+    called: dict = {}
+
+    class FakeCompiled:
+        pass
+
+    class FakeGraph:
+        def compile(self):
+            return FakeCompiled()
+
+    def fake_build_graph_from_registry(**kwargs):
+        called.update(kwargs)
+        return FakeGraph()
+
+    import agent_contracts
+
+    monkeypatch.setattr(agent_contracts, "build_graph_from_registry", fake_build_graph_from_registry)
+
+    compiled = _try_compile_langgraph(reg)
+    assert compiled is not None
+    assert called["supervisors"] == ["card", "shopping"]
+    assert called["entrypoint"][0] == "entry"
 
 
 def test_diff_breaking(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
