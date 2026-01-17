@@ -18,7 +18,7 @@ Welcome to the documentation for **Agent Contracts**, a type-safe, modular, and 
 - **[ベストプラクティス](best_practices.ja.md)**: 効果的なエージェント設計と状態管理の方法。
 - **[入門ガイド](getting_started.ja.md)**: 最初のエージェントを構築するためのクイックスタート。
 - **[CLI](cli.ja.md)**: コントラクトの検証・可視化・差分。
-- **[Skills](skills/index.md)**: 公式Skills（利用者向け）とテンプレ（コントリビューター向け）。
+- **[Skills](skills/index.ja.md)**: 公式Skills（利用者向け）とテンプレ（コントリビューター向け）。
 - **[トラブルシューティング](troubleshooting.ja.md)**: よくある問題とその解決策。
 
 ## API Reference

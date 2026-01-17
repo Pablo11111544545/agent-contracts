@@ -98,7 +98,21 @@ state = {
 
 1. **Separation of Concerns**: Each slice has a single purpose
 2. **Explicit Access**: Nodes declare which slices they read/write
-3. **Validation**: Unknown slices trigger errors
+3. **Validation**: Unknown slice names and contract I/O violations can be detected as warnings/errors
+
+**Contract I/O behavior (runtime)**:
+- **Default**: Warn and continue (undeclared writes are dropped by default)
+- **strict**: Raise `ContractViolationError`
+- **Undeclared read**: Returns `{}` in default mode (raises in strict mode)
+- **Undeclared write**: Dropped by default (raises in strict mode)
+
+YAML example:
+```yaml
+io:
+  strict: true                  # Stop with exception
+  warn: true                    # Warning logs
+  drop_undeclared_writes: true  # Drop undeclared writes
+```
 
 ### Built-in Slices
 

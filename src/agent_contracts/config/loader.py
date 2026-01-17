@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from agent_contracts.config.schema import FrameworkConfig, SupervisorConfig, FeatureConfig
+from agent_contracts.config.schema import FrameworkConfig, SupervisorConfig, FeatureConfig, IOConfig
 from agent_contracts.config.questions import QuestionDefinition, QuestionsConfig
 
 
@@ -38,6 +38,14 @@ def load_config(path: Path | str) -> FrameworkConfig:
         max_iterations=supervisor_data.get("max_iterations", 10),
         terminal_response_types=response_types.get("terminal_states", []),
     )
+
+    # Parse I/O config
+    io_data = data.get("io", {}) if isinstance(data, dict) else {}
+    io = IOConfig(
+        strict=io_data.get("strict", False),
+        warn=io_data.get("warn", True),
+        drop_undeclared_writes=io_data.get("drop_undeclared_writes", True),
+    )
     
     # Parse feature configs
     features_data = data.get("features", {}) if isinstance(data, dict) else {}
@@ -53,6 +61,7 @@ def load_config(path: Path | str) -> FrameworkConfig:
     
     return FrameworkConfig(
         supervisor=supervisor,
+        io=io,
         features=features,
     )
 

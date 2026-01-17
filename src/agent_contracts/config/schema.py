@@ -32,6 +32,26 @@ class FeatureConfig(BaseModel):
     extra: Dict[str, Any] = Field(default_factory=dict, description="Custom configuration")
 
 
+class IOConfig(BaseModel):
+    """Contract I/O enforcement configuration.
+    
+    Controls runtime behavior when a node attempts to read/write slices
+    not declared in its NodeContract.
+    """
+    strict: bool = Field(
+        default=False,
+        description="Raise exceptions on contract I/O violations instead of warnings.",
+    )
+    warn: bool = Field(
+        default=True,
+        description="Log warnings on contract I/O violations.",
+    )
+    drop_undeclared_writes: bool = Field(
+        default=True,
+        description="Drop writes to undeclared slices (warn/strict still applies).",
+    )
+
+
 class FrameworkConfig(BaseModel):
     """Framework-wide configuration.
     
@@ -44,4 +64,5 @@ class FrameworkConfig(BaseModel):
         set_config(config)
     """
     supervisor: SupervisorConfig = Field(default_factory=SupervisorConfig)
+    io: IOConfig = Field(default_factory=IOConfig)
     features: Dict[str, FeatureConfig] = Field(default_factory=dict)

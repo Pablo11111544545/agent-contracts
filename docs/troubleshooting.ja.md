@@ -303,6 +303,23 @@ return NodeOutputs(
 
 ---
 
+## コントラクトI/Oの問題
+
+### "コントラクト外のslice read/write をしている"
+
+`Undeclared slice read` / `Undeclared slice write(s)` の警告が出る場合、ノードが `NodeContract.reads`/`writes` に含まれないスライスにアクセスしています。
+
+対応:
+- ノードの `NodeContract` にスライスを追加する
+- もしくは実行時の制約設定を調整する:
+
+```yaml
+io:
+  strict: false                 # true: ContractViolationError で停止
+  warn: true                    # 警告ログ
+  drop_undeclared_writes: true  # コントラクト外writeを破棄
+```
+
 ## テストの問題
 
 ### "非同期テストが失敗する"

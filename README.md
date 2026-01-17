@@ -496,10 +496,16 @@ Manage agent behavior without changing code.
 # agent_config.yaml
 supervisor:
     max_iterations: 10
-    model_name: "gpt-4o"
+io:
+    # Contract I/O enforcement (runtime)
+    strict: false                 # true: raise ContractViolationError
+    warn: true                    # log warnings on violations
+    drop_undeclared_writes: true  # drop undeclared writes by default
 
-interview:
-    max_questions: 5
+response_types:
+    terminal_states: ["done", "error"]
+
+features: {}
 ```
 
 ```python

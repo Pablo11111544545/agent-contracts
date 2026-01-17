@@ -12,6 +12,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 
 from agent_contracts.contracts import NodeContract, NodeInputs, NodeOutputs
+from agent_contracts.config import get_config
+from agent_contracts.errors import ContractViolationError
 from agent_contracts.utils.logging import get_logger
 
 
@@ -144,14 +146,23 @@ class ModularNode(ABC):
         Only extracts slices declared in CONTRACT.reads
         and returns them as NodeInputs.
         """
+        cfg = get_config()
         data = {}
         for slice_name in self.CONTRACT.reads:
             if slice_name == "_internal":
                 data[slice_name] = state.get("_internal", {})
             else:
                 data[slice_name] = state.get(slice_name, {})
-        
-        return NodeInputs(**data)
+
+        inputs = NodeInputs(**data)
+        inputs._configure_contract_io(
+            allowed_slices=set(self.CONTRACT.reads),
+            node_name=self.CONTRACT.name,
+            strict=cfg.io.strict,
+            warn=cfg.io.warn,
+            logger=self.logger,
+        )
+        return inputs
     
     def _convert_outputs(self, outputs: NodeOutputs) -> dict:
         """Convert NodeOutputs to LangGraph State update format.
@@ -159,8 +170,24 @@ class ModularNode(ABC):
         Expands from slice format to flat format.
         LangGraph expects a flat dict.
         """
+        cfg = get_config()
+        declared_writes = set(self.CONTRACT.writes)
+        raw_updates = outputs.to_state_updates()
+        extra_writes = sorted(set(raw_updates.keys()) - declared_writes)
+        if extra_writes:
+            msg = (
+                f"Undeclared slice write(s) {extra_writes} in node '{self.CONTRACT.name}'"
+            )
+            if cfg.io.strict:
+                raise ContractViolationError(msg)
+            if cfg.io.warn:
+                self.logger.warning(msg)
+            if cfg.io.drop_undeclared_writes:
+                for k in extra_writes:
+                    raw_updates.pop(k, None)
+
         result = {}
-        for slice_name, slice_data in outputs.to_state_updates().items():
+        for slice_name, slice_data in raw_updates.items():
             if isinstance(slice_data, dict):
                 result[slice_name] = slice_data
         return result

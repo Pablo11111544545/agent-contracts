@@ -496,10 +496,16 @@ pip install git+https://github.com/yatarousan0227/agent-contracts.git
 # agent_config.yaml
 supervisor:
     max_iterations: 10
-    model_name: "gpt-4o"
+io:
+    # コントラクトI/O制約（実行時）
+    strict: false                 # true: ContractViolationError で停止
+    warn: true                    # 違反時に警告ログ
+    drop_undeclared_writes: true  # コントラクト外writeはデフォルトで破棄
 
-interview:
-    max_questions: 5
+response_types:
+    terminal_states: ["done", "error"]
+
+features: {}
 ```
 
 ```python

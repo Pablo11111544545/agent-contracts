@@ -2,6 +2,7 @@
 
 from agent_contracts.config.schema import (
     SupervisorConfig,
+    IOConfig,
     FeatureConfig,
     FrameworkConfig,
 )
@@ -22,6 +23,7 @@ from agent_contracts.config.questions import (
 __all__ = [
     # Schema
     "SupervisorConfig",
+    "IOConfig",
     "FeatureConfig",
     "FrameworkConfig",
     # Loader
