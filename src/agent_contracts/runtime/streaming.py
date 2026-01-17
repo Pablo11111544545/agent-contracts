@@ -236,6 +236,7 @@ class StreamingRuntime:
         request: RequestContext,
         graph: Any,
         stream_mode: str = "updates",
+        initial_state: dict[str, Any] | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream execution using LangGraph's native streaming.
         
@@ -245,19 +246,23 @@ class StreamingRuntime:
             request: Execution request context
             graph: Compiled LangGraph graph
             stream_mode: LangGraph stream mode ("values", "updates", "debug")
+            initial_state: Optional pre-built initial state
             
         Yields:
             StreamEvent for each update from the graph
         """
         try:
             # Build initial state
-            state = create_base_state(
-                session_id=request.session_id,
-                action=request.action,
-                params=request.params,
-                message=request.message,
-                image=request.image,
-            )
+            if initial_state is not None:
+                state = initial_state
+            else:
+                state = create_base_state(
+                    session_id=request.session_id,
+                    action=request.action,
+                    params=request.params,
+                    message=request.message,
+                    image=request.image,
+                )
             
             # Restore session
             if request.resume_session and self.session_store:
