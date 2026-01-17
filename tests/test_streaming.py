@@ -362,6 +362,33 @@ class TestStreamingRuntimeWithGraph:
         assert events[-1].type == StreamEventType.DONE
 
     @pytest.mark.asyncio
+    async def test_stream_with_graph_initial_state(self):
+        """stream_with_graph accepts an initial state override."""
+        runtime = StreamingRuntime()
+
+        class MockGraph:
+            def __init__(self):
+                self.seen_state = None
+
+            async def astream(self, state, stream_mode="updates"):
+                self.seen_state = state
+                yield {"node1": {"response": {"response_type": "test"}}}
+
+        graph = MockGraph()
+        initial_state = {"custom": {"data": "test"}}
+
+        events = []
+        async for event in runtime.stream_with_graph(
+            RequestContext(session_id="abc", action="test"),
+            graph=graph,
+            initial_state=initial_state,
+        ):
+            events.append(event)
+
+        assert graph.seen_state.get("custom") == {"data": "test"}
+        assert events[-1].type == StreamEventType.DONE
+
+    @pytest.mark.asyncio
     async def test_stream_with_graph_values_mode(self):
         """stream_with_graph works with values mode."""
         runtime = StreamingRuntime()
@@ -426,4 +453,3 @@ class TestStreamingRuntimeWithGraph:
             events.append(event)
         
         assert events[-1].type == StreamEventType.DONE
-
