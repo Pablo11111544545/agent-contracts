@@ -17,6 +17,10 @@ English | [日本語](README.ja.md)
 
 **A modular, contract-driven node architecture for building scalable LangGraph agents.**
 
+## Project Status
+
+This project is currently in **Beta** (`Development Status :: 4 - Beta`). Public APIs and the `agent-contracts` CLI are being stabilized ahead of 1.0; breaking changes will be documented in the changelog with migration notes.
+
 ---
 
 ### The Problem

@@ -17,6 +17,10 @@
 
 **LangGraphエージェントを構築するための、モジュール式・契約駆動型ノードアーキテクチャ。**
 
+## プロジェクトステータス
+
+本プロジェクトは現在 **Beta**（`Development Status :: 4 - Beta`）です。公開APIおよび `agent-contracts` CLI は 1.0 に向けて安定化を進めており、破壊的変更がある場合は CHANGELOG に移行手順とともに明記します。
+
 ---
 
 ### The Problem (課題)

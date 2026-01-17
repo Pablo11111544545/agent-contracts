@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI**: `visualize --graph-module/--graph-func` to render `LangGraph Node Flow` from an app-provided graph
 
 ### Changed
+- **Metadata**: Mark project as Beta (PyPI trove classifier)
 - **CLI**: `--module` import now auto-calls `register_all_nodes(...)` when present and no nodes were registered on import
 
 ### Fixed
