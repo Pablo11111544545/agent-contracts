@@ -4,6 +4,11 @@
 supervisor:
   max_iterations: 10
 
+io:
+  strict: false
+  warn: true
+  drop_undeclared_writes: true
+
 response_types:
   terminal_states: []
   # Add your terminal response types here

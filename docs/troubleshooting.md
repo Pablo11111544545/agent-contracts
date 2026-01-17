@@ -303,6 +303,23 @@ return NodeOutputs(
 
 ---
 
+## Contract I/O Issues
+
+### "Undeclared slice read/write"
+
+If you see warnings like `Undeclared slice read` / `Undeclared slice write(s)`, a node is accessing slices not listed in its `NodeContract.reads`/`writes`.
+
+Options:
+- Update the node's `NodeContract` to declare the slice(s)
+- Or configure runtime enforcement:
+
+```yaml
+io:
+  strict: false                 # true: raise ContractViolationError
+  warn: true                    # warning logs
+  drop_undeclared_writes: true  # drop undeclared writes
+```
+
 ## Testing Issues
 
 ### "Async tests failing"

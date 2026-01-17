@@ -6,8 +6,12 @@ inputs, outputs, dependencies, and trigger conditions.
 from __future__ import annotations
 
 from typing import Any
+import logging
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
+
+from agent_contracts.utils.logging import get_logger
+from agent_contracts.errors import ContractViolationError
 
 
 # =============================================================================
@@ -130,9 +134,41 @@ class NodeInputs(BaseModel):
     Holds slices extracted based on Contract.reads.
     """
     model_config = ConfigDict(extra="allow")  # Allow dynamic slice addition
+
+    _allowed_slices: set[str] = PrivateAttr(default_factory=set)
+    _strict_contract_io: bool = PrivateAttr(default=False)
+    _warn_contract_io: bool = PrivateAttr(default=True)
+    _logger: logging.Logger = PrivateAttr(default_factory=lambda: get_logger("agent_contracts.contract_io"))
+    _warned_reads: set[str] = PrivateAttr(default_factory=set)
+    _node_name: str | None = PrivateAttr(default=None)
     
+    def _configure_contract_io(
+        self,
+        *,
+        allowed_slices: set[str],
+        node_name: str | None,
+        strict: bool,
+        warn: bool,
+        logger: logging.Logger | None = None,
+    ) -> None:
+        self._allowed_slices = set(allowed_slices)
+        self._node_name = node_name
+        self._strict_contract_io = strict
+        self._warn_contract_io = warn
+        if logger is not None:
+            self._logger = logger
+
     def get_slice(self, name: str) -> dict:
         """Get specified slice."""
+        if self._allowed_slices and name not in self._allowed_slices:
+            node = self._node_name or "unknown"
+            msg = f"Undeclared slice read '{name}' in node '{node}'"
+            if self._strict_contract_io:
+                raise ContractViolationError(msg)
+            if self._warn_contract_io and name not in self._warned_reads:
+                self._warned_reads.add(name)
+                self._logger.warning(msg)
+            return {}
         return getattr(self, name, {})
 
 

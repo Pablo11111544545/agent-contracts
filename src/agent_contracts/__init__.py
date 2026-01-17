@@ -49,6 +49,7 @@ from agent_contracts.router import BaseActionRouter
 from agent_contracts.visualizer import ContractVisualizer
 from agent_contracts.validator import ContractValidator, ValidationResult
 from agent_contracts.contract_diff import ContractDiffReport, NodeChange, diff_contracts
+from agent_contracts.errors import ContractViolationError
 from agent_contracts.runtime import (
     RequestContext,
     ExecutionResult,
@@ -59,7 +60,7 @@ from agent_contracts.runtime import (
     AgentRuntime,
 )
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 __all__ = [
     # Version
@@ -114,6 +115,8 @@ __all__ = [
     "ContractDiffReport",
     "NodeChange",
     "diff_contracts",
+    # Errors
+    "ContractViolationError",
     # Runtime
     "RequestContext",
     "ExecutionResult",

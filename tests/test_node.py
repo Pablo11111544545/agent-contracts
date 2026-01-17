@@ -1,5 +1,6 @@
 """Tests for ModularNode and InteractiveNode."""
 
+import logging
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,13 +10,23 @@ from agent_contracts import (
     NodeInputs,
     NodeOutputs,
     TriggerCondition,
+    ContractViolationError,
 )
+from agent_contracts.config import FrameworkConfig, IOConfig, set_config
 from agent_contracts.node import InteractiveNode
 
 
 # =============================================================================
 # Test Nodes
 # =============================================================================
+
+@pytest.fixture
+def clean_config():
+    """Reset the global config before and after each test."""
+    set_config(None)
+    yield
+    set_config(None)
+
 
 class SampleNode(ModularNode):
     """Simple test node."""
@@ -215,6 +226,52 @@ class TestModularNode:
         # "response" is in writes, not reads, so not extracted
         assert inputs.get_slice("other") == {}
 
+    @pytest.mark.asyncio
+    async def test_undeclared_slice_read_warns_by_default(
+        self, caplog: pytest.LogCaptureFixture, clean_config
+    ):
+        class UndeclaredReadNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="undeclared_read",
+                description="reads undeclared slice",
+                reads=["request"],
+                writes=["response"],
+                supervisor="main",
+            )
+
+            async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+                _ = inputs.get_slice("context")
+                return NodeOutputs(response={"ok": True})
+
+        caplog.set_level(logging.WARNING)
+        node = UndeclaredReadNode()
+        result = await node({"request": {}, "context": {"x": 1}})
+        assert result["response"]["ok"] is True
+        assert "Undeclared slice read 'context'" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_undeclared_slice_read_raises_in_strict_mode(
+        self, clean_config
+    ):
+        set_config(FrameworkConfig(io=IOConfig(strict=True)))
+
+        class UndeclaredReadNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="undeclared_read_strict",
+                description="reads undeclared slice",
+                reads=["request"],
+                writes=["response"],
+                supervisor="main",
+            )
+
+            async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+                _ = inputs.get_slice("context")
+                return NodeOutputs(response={"ok": True})
+
+        node = UndeclaredReadNode()
+        with pytest.raises(ContractViolationError, match="Undeclared slice read"):
+            await node({"request": {}, "context": {"x": 1}})
+
     def test_convert_outputs(self):
         """Test _convert_outputs converts to state format."""
         node = SampleNode()
@@ -225,6 +282,49 @@ class TestModularNode:
         result = node._convert_outputs(outputs)
         
         assert result["response"]["message"] == "hello"
+
+    @pytest.mark.asyncio
+    async def test_undeclared_slice_write_warns_and_drops_by_default(
+        self, caplog: pytest.LogCaptureFixture, clean_config
+    ):
+        class UndeclaredWriteNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="undeclared_write",
+                description="writes undeclared slice",
+                reads=["request"],
+                writes=["response"],
+                supervisor="main",
+            )
+
+            async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+                return NodeOutputs(response={"ok": True}, context={"x": 1})
+
+        caplog.set_level(logging.WARNING)
+        node = UndeclaredWriteNode()
+        result = await node({"request": {}, "context": {"x": 1}})
+        assert result["response"]["ok"] is True
+        assert "context" not in result
+        assert "Undeclared slice write(s)" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_undeclared_slice_write_raises_in_strict_mode(self, clean_config):
+        set_config(FrameworkConfig(io=IOConfig(strict=True)))
+
+        class UndeclaredWriteNode(ModularNode):
+            CONTRACT = NodeContract(
+                name="undeclared_write_strict",
+                description="writes undeclared slice",
+                reads=["request"],
+                writes=["response"],
+                supervisor="main",
+            )
+
+            async def execute(self, inputs: NodeInputs, config=None) -> NodeOutputs:
+                return NodeOutputs(response={"ok": True}, context={"x": 1})
+
+        node = UndeclaredWriteNode()
+        with pytest.raises(ContractViolationError, match="Undeclared slice write"):
+            await node({"request": {}, "context": {"x": 1}})
 
     def test_get_request_param(self):
         """Test get_request_param helper."""
