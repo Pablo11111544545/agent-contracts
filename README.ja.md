@@ -17,6 +17,14 @@
 
 **LangGraphエージェントを構築するための、モジュール式・契約駆動型ノードアーキテクチャ。**
 
+## ▶️ 対話デモを試す
+
+コントラクト駆動のルーティングと意思決定トレースを体験するには、対話型テックサポートデモを起動してください：
+
+```bash
+python -m examples.interactive_tech_support
+```
+
 ## プロジェクトステータス
 
 本プロジェクトは現在 **Beta**（`Development Status :: 4 - Beta`）です。公開APIおよび `agent-contracts` CLI は 1.0 に向けて安定化を進めており、破壊的変更がある場合は CHANGELOG に移行手順とともに明記します。
@@ -226,6 +234,7 @@ agent-contracts diff --from-module myapp.v1.nodes --to-module myapp.v2.nodes
 - `examples/05_backend_runtime.py`: Strict検証付きのバックエンド実行例
 - `examples/03_simple_chatbot.py`: 最小構成のルールベースルーティング
 - `examples/04_multi_step_workflow.py`: 逐次ワークフロー例
+- `examples/interactive_tech_support/`: 対話型のマルチノードデモ（ルーティングトレース + 任意のLLM）。実行: `python -m examples.interactive_tech_support`
 
 ---
 

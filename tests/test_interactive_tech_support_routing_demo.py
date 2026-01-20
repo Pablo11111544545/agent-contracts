@@ -1,4 +1,14 @@
+import sys
+from pathlib import Path
+
 import pytest
+
+# Pytest 9's default import mode can run without adding the repo root to sys.path
+# (e.g., when invoked via the `pytest` entrypoint). The demo lives under
+# `./examples/`, so ensure the repo root is importable for this test module.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from agent_contracts import GenericSupervisor, NodeRegistry
 
