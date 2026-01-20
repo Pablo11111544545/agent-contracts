@@ -21,6 +21,8 @@ English | [日本語](README.ja.md)
 
 Run the interactive tech support demo to see contract-driven routing and decision traces in action:
 
+Demo guide: [examples/interactive_tech_support/README.md](examples/interactive_tech_support/README.md)
+
 ```bash
 python -m examples.interactive_tech_support
 ```
@@ -234,7 +236,7 @@ See `docs/cli.md` for details.
 - `examples/05_backend_runtime.py`: backend-oriented runtime with strict validation
 - `examples/03_simple_chatbot.py`: minimal rule-based routing
 - `examples/04_multi_step_workflow.py`: sequential workflow pattern
-- `examples/interactive_tech_support/`: interactive multi-node demo (routing trace + optional LLM). Run: `python -m examples.interactive_tech_support`
+- [`examples/interactive_tech_support/`](examples/interactive_tech_support/): interactive multi-node demo (routing trace + optional LLM). Run: `python -m examples.interactive_tech_support`
 
 ---
 
