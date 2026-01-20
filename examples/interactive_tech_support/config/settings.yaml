@@ -1,0 +1,19 @@
+# Agent-contracts framework configuration
+supervisor:
+  max_iterations: 10
+
+io:
+  strict: false
+  warn: true
+  drop_undeclared_writes: true
+
+response_types:
+  terminal_states:
+    - "answer"
+    - "error"
+    - "goodbye"
+
+features:
+  tech_support:
+    max_turns: 20
+    max_clarifications: 3
