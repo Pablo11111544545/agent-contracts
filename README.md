@@ -17,6 +17,14 @@ English | [日本語](README.ja.md)
 
 **A modular, contract-driven node architecture for building scalable LangGraph agents.**
 
+## ▶️ Try the Interactive Demo
+
+Run the interactive tech support demo to see contract-driven routing and decision traces in action:
+
+```bash
+python -m examples.interactive_tech_support
+```
+
 ## Project Status
 
 This project is currently in **Beta** (`Development Status :: 4 - Beta`). Public APIs and the `agent-contracts` CLI are being stabilized ahead of 1.0; breaking changes will be documented in the changelog with migration notes.
@@ -226,6 +234,7 @@ See `docs/cli.md` for details.
 - `examples/05_backend_runtime.py`: backend-oriented runtime with strict validation
 - `examples/03_simple_chatbot.py`: minimal rule-based routing
 - `examples/04_multi_step_workflow.py`: sequential workflow pattern
+- `examples/interactive_tech_support/`: interactive multi-node demo (routing trace + optional LLM). Run: `python -m examples.interactive_tech_support`
 
 ---
 

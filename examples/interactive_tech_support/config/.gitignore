@@ -1,0 +1,2 @@
+# Local LLM configuration (contains provider/model settings)
+.llm_config.yaml
