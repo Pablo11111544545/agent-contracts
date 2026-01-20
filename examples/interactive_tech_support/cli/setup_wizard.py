@@ -269,7 +269,7 @@ class SetupWizard:
         # Prompt for API key
         print(f"Enter your {provider_config.name} API key")
         if env_var:
-            print(f"(or set {env_var} environment variable)")
+            print("(or configure the API key via an environment variable)")
 
         try:
             # Try to use getpass for hidden input
