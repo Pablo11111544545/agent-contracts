@@ -163,7 +163,7 @@ class TechSupportCLI:
 
             if self.debug_mode:
                 self.display.print_debug(f"Selected node: {decision.selected_node}")
-                self.display.print_debug(f"Reason: {decision.routing_reason}")
+                self.display.print_debug(f"Reason: {decision.reason}")
 
             # Execute the selected node
             if decision.selected_node in self.node_instances:
