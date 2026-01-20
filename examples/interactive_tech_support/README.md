@@ -24,6 +24,7 @@ python -m examples.interactive_tech_support
 
 | Node | Category | Description |
 |------|----------|-------------|
+| `ClassificationNode` | Internal | Classifies the request and sets `routing.category` (keyword baseline) |
 | `HardwareNode` | Hardware | Handles printer, monitor, keyboard, mouse, USB, power issues |
 | `SoftwareNode` | Software | Handles crashes, errors, installations, updates, malware |
 | `NetworkNode` | Network | Handles WiFi, internet, VPN, DNS, router issues |
@@ -32,10 +33,13 @@ python -m examples.interactive_tech_support
 
 ### Routing
 
-The assistant uses a two-tier routing system:
+This demo uses a two-tier routing system:
 
-1. **Rule-based routing**: Keywords in the user's message are matched against predefined patterns
-2. **LLM-based routing**: When rules don't match, an optional LLM can make semantic routing decisions
+1. **Deterministic baseline** (always runs first): `ClassificationNode` inspects the user message and (when keywords match) sets `routing.category` to `hardware` / `software` / `network` / `general`.
+2. **Final routing**:
+   - If `routing.category` is set, rule triggers route to the matching specialist.
+   - If `routing.category` is unset, an optional LLM can make a semantic routing decision.
+   - If no LLM is configured, the demo routes to `ClarificationNode`.
 
 ### CLI Commands
 
@@ -44,7 +48,8 @@ The assistant uses a two-tier routing system:
 | `/help` | Show available commands |
 | `/setup` | Configure LLM provider |
 | `/status` | Show current configuration |
-| `/debug` | Toggle debug mode (show routing info) |
+| `/debug` | Toggle debug mode (show Supervisor/Node routing trace) |
+| `/new` | Start a new session (reset all state) |
 | `/clear` | Clear conversation history |
 | `/exit` | Exit the application |
 
@@ -65,6 +70,7 @@ examples/interactive_tech_support/
 │
 ├── nodes/
 │   ├── __init__.py
+│   ├── classification_node.py # Internal classifier (keyword baseline)
 │   ├── hardware_node.py  # Hardware specialist
 │   ├── software_node.py  # Software specialist
 │   ├── network_node.py   # Network specialist
@@ -136,9 +142,37 @@ Type /help for commands, or describe your issue.
 ------------------------------------------------------------
 You: My wifi keeps disconnecting
 
+┌────────────────────────────────────────────────────────────┐
+│ SUPERVISOR DECISION                                        │
+├────────────────────────────────────────────────────────────┤
+│ Input: My wifi keeps disconnecting                         │
+│ Selected: classification                                   │
+│ Reason: rule_match [classification(P90)]                   │
+└────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────┐
+│ NODE EXECUTION: classification                             │
+├────────────────────────────────────────────────────────────┤
+│ Execution time: 0.000s                                     │
+└────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────┐
+│ SUPERVISOR DECISION                                        │
+├────────────────────────────────────────────────────────────┤
+│ Input: My wifi keeps disconnecting                         │
+│ Selected: network_support                                  │
+│ Reason: rule_match [network_support(P50)]                  │
+└────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────┐
+│ NODE EXECUTION: network_support                            │
+├────────────────────────────────────────────────────────────┤
+│ Execution time: 0.900s                                     │
+└────────────────────────────────────────────────────────────┘
+
 ============================================================
 [NET] WiFi Keeps Disconnecting
-Routed via: keyword match (wifi)
+Routed via: rule_match
 ------------------------------------------------------------
 
 Try these steps:
@@ -166,9 +200,10 @@ Goodbye!
 | **Routing** | Both rule-based (keywords) and LLM-based (semantic) |
 | **Modularity** | Self-contained nodes, easy to add new specialists |
 | **Configuration** | YAML-based settings, LLM provider flexibility |
-| **Observability** | Debug mode shows routing decisions |
+| **Observability** | Debug mode shows Supervisor decisions & Node execution timing |
 | **Standalone** | Works without LLM using hardcoded knowledge base |
 | **Interactive** | Full CUI with setup wizard and commands |
+| **Session Management** | `/new` command for fresh session, `/clear` for history |
 
 ## Extending the Example
 
@@ -177,6 +212,15 @@ Goodbye!
 1. Create a new knowledge base in `knowledge/`
 2. Create a new node in `nodes/` with a `NodeContract`
 3. Register the node in `cli/app.py`
+
+## Notes for Framework Evaluators
+
+This example is intended to help evaluate agent-contracts as a framework. In particular:
+
+- **Clear state slices**: the app explicitly declares and uses `request`, `routing`, `response`, `support_context`, and `_internal`.
+- **Contract I/O enforcement**: the CLI executes nodes via `await node(state)` (the `ModularNode.__call__` path) so declared reads/writes are validated by the framework.
+- **Routing boundary**: deterministic keyword classification is modeled as a node (`ClassificationNode`), not hidden inside the supervisor.
+- **LLM safety**: LLM routing receives explicit policy context (via `GenericSupervisor.context_builder`) to keep internal-only nodes from being selected during normal routing.
 
 ### Adding Knowledge Base Entries
 

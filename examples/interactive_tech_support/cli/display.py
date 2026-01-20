@@ -76,6 +76,7 @@ class Display:
         print("  /setup  - Configure LLM provider")
         print("  /status - Show current configuration")
         print("  /debug  - Toggle debug mode (show routing info)")
+        print("  /new    - Start a new session")
         print("  /clear  - Clear conversation history")
         print("  /exit   - Exit the application")
         print()
@@ -206,3 +207,47 @@ class Display:
             message: The debug message to display.
         """
         print(f"[DEBUG] {message}")
+
+    def print_routing_trace(
+        self,
+        input_message: str,
+        selected_node: str,
+        reason: str,
+        routing_reason: str | None,
+        execution_time: float | None = None,
+    ) -> None:
+        """Print detailed routing trace for demo/debug purposes.
+
+        Args:
+            input_message: The user's input message.
+            selected_node: The selected node name.
+            reason: The decision reason.
+            routing_reason: The detailed routing reason.
+            execution_time: Optional execution time in seconds.
+        """
+        print()
+        print("┌" + "─" * 60 + "┐")
+        print("│ SUPERVISOR DECISION" + " " * 40 + "│")
+        print("├" + "─" * 60 + "┤")
+        
+        # Truncate input if too long
+        display_input = input_message[:50] + "..." if len(input_message) > 50 else input_message
+        print(f"│ Input: {display_input}" + " " * max(0, 52 - len(display_input)) + "│")
+        
+        print(f"│ Selected: {selected_node}" + " " * max(0, 49 - len(selected_node)) + "│")
+        
+        if routing_reason:
+            # Handle potentially long routing reason
+            reason_display = routing_reason[:45] + "..." if len(routing_reason) > 45 else routing_reason
+            print(f"│ Reason: {reason_display}" + " " * max(0, 51 - len(reason_display)) + "│")
+        
+        print("└" + "─" * 60 + "┘")
+        
+        if execution_time is not None:
+            print()
+            print("┌" + "─" * 60 + "┐")
+            print(f"│ NODE EXECUTION: {selected_node}" + " " * max(0, 43 - len(selected_node)) + "│")
+            print("├" + "─" * 60 + "┤")
+            time_str = f"{execution_time:.3f}s"
+            print(f"│ Execution time: {time_str}" + " " * max(0, 43 - len(time_str)) + "│")
+            print("└" + "─" * 60 + "┘")

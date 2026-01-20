@@ -1,10 +1,17 @@
 """LLM setup wizard for the tech support CLI."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+from pathlib import Path
 from typing import Any
 
+import yaml
+
 from examples.interactive_tech_support.config.loader import AppConfig, LLMProviderConfig
+
+
+# Config file location (in the config directory)
+CONFIG_FILE = Path(__file__).parent.parent / "config" / ".llm_config.yaml"
 
 
 @dataclass
@@ -36,6 +43,15 @@ class SetupWizard:
         Returns:
             LLM configuration if setup was successful, None if skipped.
         """
+        # Check for saved configuration first
+        saved_config = self._load_saved_config()
+        if saved_config:
+            print()
+            print(f"[SAVED] Found saved config: {saved_config.provider} - {saved_config.model}")
+            use_saved = self._prompt_yes_no("Use saved configuration? [Y/n]", default=True)
+            if use_saved:
+                return saved_config
+
         print()
         print("=" * 50)
         print("LLM Provider Setup")
@@ -53,7 +69,10 @@ class SetupWizard:
                 f"Found existing {existing} configuration. Use it? [Y/n]", default=True
             )
             if use_existing:
-                return self._configure_from_env(existing)
+                config = self._configure_from_env(existing)
+                if config:
+                    self._save_config(config)
+                return config
 
         # Ask if user wants to set up LLM
         setup_llm = self._prompt_yes_no(
@@ -75,7 +94,68 @@ class SetupWizard:
             return None
 
         # Configure the selected provider
-        return self._configure_provider(provider_id, provider_config)
+        config = self._configure_provider(provider_id, provider_config)
+        if config:
+            self._save_config(config)
+        return config
+
+    def _load_saved_config(self) -> LLMConfiguration | None:
+        """Load previously saved LLM configuration.
+
+        Returns:
+            LLMConfiguration if found and valid, None otherwise.
+        """
+        if not CONFIG_FILE.exists():
+            return None
+
+        try:
+            with open(CONFIG_FILE) as f:
+                data = yaml.safe_load(f) or {}
+
+            if not data.get("provider"):
+                return None
+
+            return LLMConfiguration(
+                provider=data["provider"],
+                api_key=data.get("api_key") or os.environ.get(data.get("api_key_env", "")),
+                model=data["model"],
+                azure_endpoint=data.get("azure_endpoint"),
+                azure_api_version=data.get("azure_api_version"),
+            )
+        except Exception:
+            return None
+
+    def _save_config(self, config: LLMConfiguration) -> None:
+        """Save LLM configuration for future use.
+
+        Args:
+            config: Configuration to save.
+        """
+        # Don't save the actual API key, store reference to env var
+        provider_config = self.providers.get(config.provider)
+        api_key_env = None
+        if provider_config:
+            api_key_env = provider_config.env_var
+            if provider_config.env_vars:
+                api_key_env = provider_config.env_vars.get("api_key")
+
+        data = {
+            "provider": config.provider,
+            "model": config.model,
+            "api_key_env": api_key_env,  # Store env var name, not actual key
+        }
+
+        if config.azure_endpoint:
+            data["azure_endpoint"] = config.azure_endpoint
+        if config.azure_api_version:
+            data["azure_api_version"] = config.azure_api_version
+
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                yaml.dump(data, f, default_flow_style=False)
+            print(f"[SAVED] Configuration saved to {CONFIG_FILE.name}")
+        except Exception as e:
+            print(f"[WARN] Could not save configuration: {e}")
 
     def _check_existing_config(self) -> str | None:
         """Check for existing LLM configuration in environment.

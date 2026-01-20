@@ -13,14 +13,22 @@ from agent_contracts import (
 )
 
 from examples.interactive_tech_support.knowledge.software_kb import search_software_kb
+from examples.interactive_tech_support.nodes.base_support_node import BaseSupportNode
 
 
-class SoftwareNode(ModularNode):
+class SoftwareNode(BaseSupportNode):
     """Handles software-related support issues.
 
     Specializes in: application crashes, errors, installations, updates,
     performance issues, malware, and browser problems.
     """
+
+    SYSTEM_PROMPT = (
+        "You are a software support specialist. "
+        "Your goal is to help users troubleshoot application and OS issues. "
+        "Use the provided knowledge base articles to guide your response. "
+        "Be concise, step-by-step, and empathetic."
+    )
 
     CONTRACT = NodeContract(
         name="software_support",
@@ -33,17 +41,13 @@ class SoftwareNode(ModularNode):
         supervisor="tech_support",
         is_terminal=False,
         trigger_conditions=[
-            # High priority: explicit software category
-            TriggerCondition(
-                priority=100,
-                when={"request.category": "software"},
-            ),
-            # Medium priority: keyword detection
+            # Rule-based routing via routing.category; LLM uses hints.
             TriggerCondition(
                 priority=50,
+                when={"routing.category": "software"},
                 llm_hint=(
-                    "User mentions software: crash, error, install, update, "
-                    "application, program, freeze, slow, bug"
+                    "User has a software issue: application crash, error messages, "
+                    "installation problems, updates, program freeze, slow apps, bugs"
                 ),
             ),
         ],
@@ -63,39 +67,37 @@ class SoftwareNode(ModularNode):
         support_context = inputs.get_slice("support_context") or {}
 
         message = request.get("message", "")
+        history = support_context.get("conversation_history", [])
 
         # Search knowledge base
         result = search_software_kb(message)
-
-        if result:
-            response_data = {
-                "title": result.get("title", "Software Support"),
-                "steps": result.get("steps", []),
-                "follow_up": result.get("follow_up"),
-                "category": "software",
-                "issue_type": result.get("issue"),
-            }
-            response_message = self._format_response(result)
-        else:
-            response_data = {
-                "title": "Software Support",
-                "steps": [
-                    "1. Restart the application",
-                    "2. Check for updates",
-                    "3. Clear cache and temporary files",
-                    "4. Reinstall if necessary",
-                ],
-                "follow_up": "Can you provide more details about your software issue?",
-                "category": "software",
-            }
-            response_message = (
-                "I can help with software issues. "
-                "Could you provide more details about the specific application "
-                "and the problem you're experiencing?"
+        
+        # Decide response generation method
+        if self.llm:
+            response_message = await self._generate_llm_response(
+                message, history, result
             )
+        else:
+            # Fallback
+            if result:
+                response_message = self._format_response(result)
+            else:
+                response_message = (
+                    "I can help with software issues. "
+                    "Could you provide more details about the specific application "
+                    "and the problem you're experiencing? "
+                    "Common issues: crashes, updates, installation, errors."
+                )
+
+        response_data = {
+            "title": result.get("title", "Software Support") if result else "Software Support",
+            "steps": result.get("steps", []) if result else [],
+            "follow_up": result.get("follow_up") if result else None,
+            "category": "software",
+            "issue_type": result.get("issue") if result else None,
+        }
 
         # Update conversation history
-        history = support_context.get("conversation_history", [])
         history.append(
             {
                 "role": "user",

@@ -13,14 +13,22 @@ from agent_contracts import (
 )
 
 from examples.interactive_tech_support.knowledge.network_kb import search_network_kb
+from examples.interactive_tech_support.nodes.base_support_node import BaseSupportNode
 
 
-class NetworkNode(ModularNode):
+class NetworkNode(BaseSupportNode):
     """Handles network-related support issues.
 
     Specializes in: WiFi connectivity, internet access, VPN, DNS,
     router configuration, and Ethernet issues.
     """
+
+    SYSTEM_PROMPT = (
+        "You are a network support specialist. "
+        "Your goal is to help users troubleshoot internet and connectivity issues. "
+        "Use the provided knowledge base articles to guide your response. "
+        "Be concise, step-by-step, and empathetic."
+    )
 
     CONTRACT = NodeContract(
         name="network_support",
@@ -30,17 +38,13 @@ class NetworkNode(ModularNode):
         supervisor="tech_support",
         is_terminal=False,
         trigger_conditions=[
-            # High priority: explicit network category
-            TriggerCondition(
-                priority=100,
-                when={"request.category": "network"},
-            ),
-            # Medium priority: keyword detection
+            # Rule-based routing via routing.category; LLM uses hints.
             TriggerCondition(
                 priority=50,
+                when={"routing.category": "network"},
                 llm_hint=(
-                    "User mentions network: wifi, internet, connection, "
-                    "slow network, VPN, router, DNS, IP address"
+                    "User has a network/internet issue: WiFi, internet connection, "
+                    "slow network, VPN, router, DNS, IP address problems"
                 ),
             ),
         ],
@@ -60,39 +64,37 @@ class NetworkNode(ModularNode):
         support_context = inputs.get_slice("support_context") or {}
 
         message = request.get("message", "")
+        history = support_context.get("conversation_history", [])
 
         # Search knowledge base
         result = search_network_kb(message)
-
-        if result:
-            response_data = {
-                "title": result.get("title", "Network Support"),
-                "steps": result.get("steps", []),
-                "follow_up": result.get("follow_up"),
-                "category": "network",
-                "issue_type": result.get("issue"),
-            }
-            response_message = self._format_response(result)
-        else:
-            response_data = {
-                "title": "Network Support",
-                "steps": [
-                    "1. Check if WiFi/Ethernet is connected",
-                    "2. Restart your router/modem",
-                    "3. Check cable connections",
-                    "4. Try accessing different websites",
-                ],
-                "follow_up": "Can you provide more details about your network issue?",
-                "category": "network",
-            }
-            response_message = (
-                "I can help with network issues. "
-                "Could you provide more details about the specific network "
-                "problem you're experiencing?"
+        
+        # Decide response generation method
+        if self.llm:
+            response_message = await self._generate_llm_response(
+                message, history, result
             )
+        else:
+            # Fallback
+            if result:
+                response_message = self._format_response(result)
+            else:
+                response_message = (
+                    "I can help with network issues. "
+                    "Could you provide more details about the specific network "
+                    "problem you're experiencing? "
+                    "Common issues: WiFi, internet connection, VPN, DNS."
+                )
+
+        response_data = {
+            "title": result.get("title", "Network Support") if result else "Network Support",
+            "steps": result.get("steps", []) if result else [],
+            "follow_up": result.get("follow_up") if result else None,
+            "category": "network",
+            "issue_type": result.get("issue") if result else None,
+        }
 
         # Update conversation history
-        history = support_context.get("conversation_history", [])
         history.append(
             {
                 "role": "user",

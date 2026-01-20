@@ -13,14 +13,22 @@ from agent_contracts import (
 )
 
 from examples.interactive_tech_support.knowledge.hardware_kb import search_hardware_kb
+from examples.interactive_tech_support.nodes.base_support_node import BaseSupportNode
 
 
-class HardwareNode(ModularNode):
+class HardwareNode(BaseSupportNode):
     """Handles hardware-related support issues.
 
     Specializes in: printers, monitors, keyboards, mice, USB devices,
     power issues, and other physical hardware problems.
     """
+
+    SYSTEM_PROMPT = (
+        "You are a hardware support specialist. "
+        "Your goal is to help users troubleshoot physical device issues. "
+        "Use the provided knowledge base articles to guide your response. "
+        "Be concise, step-by-step, and empathetic."
+    )
 
     CONTRACT = NodeContract(
         name="hardware_support",
@@ -33,17 +41,13 @@ class HardwareNode(ModularNode):
         supervisor="tech_support",
         is_terminal=False,
         trigger_conditions=[
-            # High priority: explicit hardware category
-            TriggerCondition(
-                priority=100,
-                when={"request.category": "hardware"},
-            ),
-            # Medium priority: keyword detection
+            # Rule-based routing via routing.category; LLM uses hints.
             TriggerCondition(
                 priority=50,
+                when={"routing.category": "hardware"},
                 llm_hint=(
-                    "User mentions hardware: printer, monitor, keyboard, mouse, "
-                    "USB, cable, screen, display, power, battery"
+                    "User has a hardware issue: printer, monitor, keyboard, mouse, "
+                    "USB device, cable, screen, display, power, battery problems"
                 ),
             ),
         ],
@@ -63,36 +67,35 @@ class HardwareNode(ModularNode):
         support_context = inputs.get_slice("support_context") or {}
 
         message = request.get("message", "")
+        history = support_context.get("conversation_history", [])
 
         # Search knowledge base
         result = search_hardware_kb(message)
-
-        if result:
-            response_data = {
-                "title": result.get("title", "Hardware Support"),
-                "steps": result.get("steps", []),
-                "follow_up": result.get("follow_up"),
-                "category": "hardware",
-                "issue_type": result.get("issue"),
-            }
-            response_message = self._format_response(result)
-        else:
-            response_data = {
-                "title": "Hardware Support",
-                "steps": [
-                    "1. Check all physical connections",
-                    "2. Restart the device",
-                    "3. Check for driver updates",
-                    "4. Try the device on another computer",
-                ],
-                "follow_up": "Can you provide more details about your hardware issue?",
-                "category": "hardware",
-            }
-            response_message = (
-                "I can help with hardware issues. "
-                "Could you provide more details about the specific hardware "
-                "and the problem you're experiencing?"
+        
+        # Decide response generation method
+        if self.llm:
+            response_message = await self._generate_llm_response(
+                message, history, result
             )
+        else:
+            # Fallback for no LLM
+            if result:
+                response_message = self._format_response(result)
+            else:
+                response_message = (
+                    "I can help with hardware issues. "
+                    "Could you provide more details about the specific device "
+                    "and the problem you're experiencing? "
+                    "Common issues I handle: printers, monitors, keyboards, power."
+                )
+
+        response_data = {
+            "title": result.get("title", "Hardware Support") if result else "Hardware Support",
+            "steps": result.get("steps", []) if result else [],
+            "follow_up": result.get("follow_up") if result else None,
+            "category": "hardware",
+            "issue_type": result.get("issue") if result else None,
+        }
 
         # Update conversation history
         history = support_context.get("conversation_history", [])

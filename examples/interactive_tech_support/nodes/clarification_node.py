@@ -13,12 +13,23 @@ from agent_contracts import (
 )
 
 
-class ClarificationNode(ModularNode):
+from examples.interactive_tech_support.nodes.base_support_node import BaseSupportNode
+
+
+class ClarificationNode(BaseSupportNode):
     """Asks clarifying questions when the user's issue is unclear.
 
     This node is triggered when the system cannot determine
     the appropriate category or needs more information.
     """
+    
+    SYSTEM_PROMPT = (
+        "You are a tech support assistant. "
+        "The user's issue is unclear or vague. "
+        "Ask a polite clarifying question to understand the problem better. "
+        "Do not offer solutions yet, just ask for more details. "
+        "Examples: 'What device are you using?', 'What error message do you see?'"
+    )
 
     CONTRACT = NodeContract(
         name="clarification",
@@ -28,17 +39,14 @@ class ClarificationNode(ModularNode):
         supervisor="tech_support",
         is_terminal=False,
         trigger_conditions=[
-            # High priority: explicit need for clarification
+            # [DEMO] High priority rule-based trigger
+            # This demonstrates how to force a node execution via internal state flags
             TriggerCondition(
                 priority=80,
                 when={"_internal.needs_clarification": True},
-            ),
-            # Medium priority: LLM detects vague question
-            TriggerCondition(
-                priority=30,
                 llm_hint=(
-                    "User question is vague or ambiguous, "
-                    "needs more information to help"
+                    "User question is vague, ambiguous, or needs more information "
+                    "to determine the correct support category"
                 ),
             ),
         ],
@@ -111,16 +119,30 @@ class ClarificationNode(ModularNode):
 
         # Determine which clarification to ask
         clarification_type = internal.get("clarification_type", "issue_type")
-        clarification = self.CLARIFICATION_QUESTIONS.get(
-            clarification_type, self.CLARIFICATION_QUESTIONS["issue_type"]
-        )
-
-        # Build response
-        question = clarification["question"]
-        options = clarification["options"]
-
-        options_text = "\n".join(f"  {i+1}. {opt}" for i, opt in enumerate(options))
-        response_message = f"{question}\n\n{options_text}"
+        
+        # Decide response generation method
+        if self.llm:
+             # Use LLM to generate a context-aware question
+            response_message = await self._generate_llm_response(
+                message, 
+                support_context.get("conversation_history", []),
+                kb_result={"steps": ["Ask for specific details about the issue", "Identify if it is hardware, software, or network related"]}
+            )
+            
+            # For API response structure, we still need some structured data
+            # We'll use a generic "open" question type
+            question = response_message
+            options = ["I'll provide more details"] 
+        else:
+            # Fallback to fixed questions
+            clarification = self.CLARIFICATION_QUESTIONS.get(
+                clarification_type, self.CLARIFICATION_QUESTIONS["issue_type"]
+            )
+            question = clarification["question"]
+            options = clarification["options"]
+            
+            options_text = "\n".join(f"  {i+1}. {opt}" for i, opt in enumerate(options))
+            response_message = f"{question}\n\n{options_text}"
 
         response_data = {
             "title": "Let me help you better",
